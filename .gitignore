@@ -1,3 +1,12 @@
+# The built binaries
+staging/kos/images/*/*r
+
+# The generated manifests
+staging/kos/deploy/50-rs-*.yaml
+
+# Do not need vendor, see glide.lock
+staging/kos/vendor
+
 # OSX leaves these everywhere on SMB shares
 ._*
 

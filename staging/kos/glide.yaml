@@ -1,0 +1,51 @@
+package: k8s.io/examples/staging/kos
+import:
+- package: github.com/golang/glog
+- package: github.com/onsi/ginkgo
+  version: ^1.6
+- package: github.com/onsi/gomega
+  version: ^1.4
+- package: github.com/spf13/cobra
+  version: ~0.0.3
+- package: github.com/wangjia184/sortedset
+- package: k8s.io/apimachinery
+  version: release-1.10
+  subpackages:
+  - pkg/api/errors
+  - pkg/apimachinery/announced
+  - pkg/apimachinery/registered
+  - pkg/apis/meta/v1
+  - pkg/fields
+  - pkg/labels
+  - pkg/runtime
+  - pkg/runtime/schema
+  - pkg/runtime/serializer
+  - pkg/types
+  - pkg/util/errors
+  - pkg/util/validation/field
+  - pkg/version
+  - pkg/watch
+- package: k8s.io/apiserver
+  version: release-1.10
+  subpackages:
+  - pkg/admission
+  - pkg/endpoints/request
+  - pkg/registry/generic
+  - pkg/registry/generic/registry
+  - pkg/registry/rest
+  - pkg/server
+  - pkg/server/options
+  - pkg/storage
+  - pkg/storage/names
+- package: k8s.io/client-go
+  version: ~7.0.0
+  subpackages:
+  - discovery
+  - discovery/fake
+  - rest
+  - testing
+  - tools/cache
+  - util/flowcontrol
+- package: k8s.io/code-generator
+  version: release-1.10
+- package: k8s.io/gengo
