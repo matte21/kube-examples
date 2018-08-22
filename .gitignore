@@ -1,3 +1,20 @@
+## Exclusions for staging/kos
+
+# The built binaries
+staging/kos/images/*/*r
+staging/kos/images/*/*/*[rt]
+staging/kos/images/controllers/connectionagent/test-scripts
+staging/kos/local-binaries
+
+# The generated manifests
+staging/kos/deploy/main/50-rs-*.yaml
+staging/kos/deploy/main/50-ds-*.yaml
+
+# Do not need vendor, see glide.lock
+staging/kos/vendor
+
+## And now we return you to your regularly scheduled exclusions
+
 # OSX leaves these everywhere on SMB shares
 ._*
 
