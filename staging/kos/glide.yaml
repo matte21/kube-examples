@@ -1,6 +1,14 @@
 package: k8s.io/examples/staging/kos
 import:
 - package: github.com/golang/glog
+
+# Force a good enough version of json-iterator/go.
+# k8s.io/apimachinery 1.10 needs
+# f2b4162afba35581b6d4a50d3b8f34e33c144682 (1.1.5) or later, but
+# something somewhere in here would make an earlier version get
+# chosen.
+- package: github.com/json-iterator/go
+  version: ~1.1.5
 - package: github.com/onsi/ginkgo
   version: ^1.6
 - package: github.com/onsi/gomega

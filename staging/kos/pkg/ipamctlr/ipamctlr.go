@@ -38,11 +38,15 @@ import (
 	netv1a1 "k8s.io/examples/staging/kos/pkg/apis/network/v1alpha1"
 	kosclientv1a1 "k8s.io/examples/staging/kos/pkg/client/clientset/versioned/typed/network/v1alpha1"
 	netlistv1a1 "k8s.io/examples/staging/kos/pkg/client/listers/network/v1alpha1"
+
+	"k8s.io/examples/staging/kos/pkg/uint32set"
 )
 
 const (
 	owningAttachmentIdxName = "owningAttachment"
 	attachmentSubnetIdxName = "subnet"
+
+	LastUInt32 = uint32(uint64(1)<<32 - 1)
 )
 
 type IPAMController struct {
@@ -57,64 +61,28 @@ type IPAMController struct {
 	workers        int
 	attsMutex      sync.Mutex
 	atts           map[k8stypes.NamespacedName]*NetworkAttachmentData
-	subnetsMutex   sync.Mutex
-	subnets        map[SubnetKey]*SubnetData
+	addrCacheMutex sync.Mutex
+	addrCache      map[uint32]uint32set.UInt32SetChooser
 }
 
-// NetworkAttachmentData holds the local state for a NetworkAttachment.
-// The fields can only be accessed by a worker thread working on
-// the NetworkAttachment.
-// The data for a given attachment is used for two things:
-// 1. to identify the SubnetData that holds a reference to the attachment,
-// 2. to remember a status update while it is in flight.
-// vni, subnetBaseU, and prefixLen are set properly if the attachment is
-// referenced from the corresponding SubnetData; otherwise they MAY be zero.
-// When the attachment's ResourceVersion is either anticipatingResourceVersion
-// or anticiaptedResourceVersion and anticipatedIPv4 != nil then that address
-// has been written into the attachment's status and there exists an IPLock
-// that supports this, even if this controller has not yet been notified about
-// that lock; when any other ResourceVersion
-// is seen these three fields get set to their zero value.
+// NetworkAttachmentData holds the local state for a
+// NetworkAttachment.  The fields can only be accessed by a worker
+// thread working on the NetworkAttachment.  The data for a given
+// attachment is used to remember a status update while it is in
+// flight. When the attachment's ResourceVersion is either
+// anticipatingResourceVersion or anticiaptedResourceVersion and
+// anticipatedIPv4 != nil then that address has been written into the
+// attachment's status and there exists an IPLock that supports this,
+// even if this controller has not yet been notified about that lock;
+// when any other ResourceVersion is seen these three fields get set
+// to their zero value.
 type NetworkAttachmentData struct {
-	vni                         uint32
-	subnetBaseU                 uint32
-	prefixLen                   int
+	//vni                         uint32
+	//subnetBaseU                 uint32
+	//prefixLen                   int
 	anticipatedIPv4             gonet.IP
 	anticipatingResourceVersion string
 	anticipatedResourceVersion  string
-}
-
-type SubnetKey struct {
-	VNI       uint32
-	baseU     uint32
-	prefixLen int
-}
-
-// SubnetData holds what we care about a subnet.
-// One of these is retained exactly as long as the subnet has an IPLock
-// (as judged at notification time) or a NetworkAttachment (as judged
-// in a queue worker thread).
-// The fields that characterize the subnet are immutable.
-type SubnetData struct {
-	vni         uint32
-	baseAddress uint32
-	prefixLen   int
-
-	// atts holds references to the NetworkAttachments of this subnet.
-	// Every referenced attachment has a NetworkAttachmentData whose
-	// values match this subnet.
-	// Access only while holding IPAMController.attsMutex .
-	atts map[k8stypes.NamespacedName]struct{}
-
-	// locks holds references to the IPLocks of this subnet.
-	// Access only while holding IPAMController.subnetsMutex .
-	locks map[k8stypes.NamespacedName]struct{}
-
-	addrsMutex sync.Mutex
-
-	// addrs indicates which addresses are in use.
-	// Access only while holding addrsMutex.
-	addrs AddressSet
 }
 
 func NewIPAMController(netIfc kosclientv1a1.NetworkV1alpha1Interface,
@@ -138,7 +106,7 @@ func NewIPAMController(netIfc kosclientv1a1.NetworkV1alpha1Interface,
 		queue:          queue,
 		workers:        workers,
 		atts:           make(map[k8stypes.NamespacedName]*NetworkAttachmentData),
-		subnets:        make(map[SubnetKey]*SubnetData),
+		addrCache:      make(map[uint32]uint32set.UInt32SetChooser),
 	}
 	return
 }
@@ -242,25 +210,57 @@ func (ctlr *IPAMController) OnLockDelete(obj interface{}) {
 
 func (ctlr *IPAMController) OnLockNotify(ipl *netv1a1.IPLock, op string, exists bool) {
 	glog.V(4).Infof("Notified of %s of IPLock %s/%s=%s\n", op, ipl.Namespace, ipl.Name, string(ipl.UID))
-	vni, subnetBaseU, offset, prefixLen, err := parseIPLockName(ipl.Name)
+	vni, addrU, err := parseIPLockName(ipl.Name)
 	if err != nil {
 		glog.Errorf("Error parsing IPLock name %q: %s\n", ipl.Name, err.Error())
 		return
 	}
-	snd := ctlr.getSubnetDataForLock(vni, subnetBaseU, prefixLen, ipl, exists)
 	var changed bool
 	var addrOp string
 	if exists {
-		addrOp = "ensure"
-		changed = snd.TakeAddress(offset)
+		addrOp = "ensured"
+		changed = ctlr.TakeAddress(vni, addrU)
 	} else {
-		addrOp = "release"
-		changed = snd.ReleaseAddress(offset)
+		addrOp = "released"
+		changed = ctlr.ReleaseAddress(vni, addrU)
 	}
-	glog.V(4).Infof("At notify of %s of IPLock %s/%s, %s %s, changed=%v\n", op, ipl.Namespace, ipl.Name, addrOp, Uint32ToIPv4(subnetBaseU+offset), changed)
-	if !exists {
-		ctlr.clearSubnetDataForLock(vni, subnetBaseU, prefixLen, ipl.Namespace, ipl.Name)
+	glog.V(4).Infof("At notify of %s of IPLock %s/%s, %s %s, changed=%v\n", op, ipl.Namespace, ipl.Name, addrOp, Uint32ToIPv4(addrU), changed)
+}
+
+func (ctlr *IPAMController) TakeAddress(vni, addrU uint32) (changed bool) {
+	ctlr.addrCacheMutex.Lock()
+	defer func() { ctlr.addrCacheMutex.Unlock() }()
+	addrs := ctlr.addrCache[vni]
+	if addrs == nil {
+		addrs = uint32set.NewSortedUInt32Set(1)
+		ctlr.addrCache[vni] = addrs
 	}
+	return addrs.Add(addrU)
+}
+
+func (ctlr *IPAMController) PickAddress(vni, min, max uint32) (addrU uint32, ok bool) {
+	ctlr.addrCacheMutex.Lock()
+	defer func() { ctlr.addrCacheMutex.Unlock() }()
+	addrs := ctlr.addrCache[vni]
+	if addrs == nil {
+		addrs = uint32set.NewSortedUInt32Set(1)
+		ctlr.addrCache[vni] = addrs
+	}
+	return addrs.AddOneInRange(min, max)
+}
+
+func (ctlr *IPAMController) ReleaseAddress(vni, addrU uint32) (changed bool) {
+	ctlr.addrCacheMutex.Lock()
+	defer func() { ctlr.addrCacheMutex.Unlock() }()
+	addrs := ctlr.addrCache[vni]
+	if addrs == nil {
+		return
+	}
+	changed = addrs.Remove(addrU)
+	if addrs.IsEmpty() {
+		delete(ctlr.addrCache, vni)
+	}
+	return
 }
 
 func (ctlr *IPAMController) processQueue() {
@@ -283,7 +283,7 @@ func (ctlr *IPAMController) processQueueItem(nsn k8stypes.NamespacedName) {
 		ctlr.queue.Forget(nsn)
 		return
 	}
-	glog.Warningf("Failed processing %s (%d requeues): %s\n", nsn, requeues, err.Error())
+	glog.Warningf("Failed processing %s, requeuing (%d earlier requeues): %s\n", nsn, requeues, err.Error())
 	ctlr.queue.AddRateLimited(nsn)
 }
 
@@ -302,7 +302,6 @@ func (ctlr *IPAMController) processNetworkAttachment(ns, name string) error {
 	}
 	if att == nil {
 		if nadat != nil {
-			ctlr.clearSubnetDataForAttachment(nadat.vni, nadat.subnetBaseU, nadat.prefixLen, ns, name)
 			ctlr.clearNetworkAttachmentData(ns, name)
 		}
 		return nil
@@ -319,7 +318,7 @@ func (ctlr *IPAMController) processNetworkAttachment(ns, name string) error {
 	} else if nadat.anticipatedIPv4 != nil {
 		return nil
 	} else {
-		lockForStatus, ipForStatus, err = ctlr.pickAndLockAddress(ns, name, att, nadat, subnetName, desiredVNI, desiredBaseU, desiredPrefixLen)
+		lockForStatus, ipForStatus, err = ctlr.pickAndLockAddress(ns, name, att, subnetName, desiredVNI, desiredBaseU, desiredPrefixLen)
 		if err != nil {
 			return err
 		}
@@ -327,7 +326,7 @@ func (ctlr *IPAMController) processNetworkAttachment(ns, name string) error {
 	return ctlr.setIPInStatus(ns, name, att, nadat, lockForStatus, ipForStatus)
 }
 
-func (ctlr *IPAMController) analyzeAndRelease(ns, name string, att *netv1a1.NetworkAttachment, nadat *NetworkAttachmentData) (subnetName string, desiredVNI, desiredBaseU uint32, desiredPrefixLen int, lockInStatus, lockForStatus ParsedLock, err error, ok bool) {
+func (ctlr *IPAMController) analyzeAndRelease(ns, name string, att *netv1a1.NetworkAttachment, nadat *NetworkAttachmentData) (subnetName string, desiredVNI, desiredBaseU, desiredLastU uint32, lockInStatus, lockForStatus ParsedLock, err error, ok bool) {
 	statusLockUID := "<none>"
 	ipInStatus := ""
 	attUID := "."
@@ -355,8 +354,7 @@ func (ctlr *IPAMController) analyzeAndRelease(ns, name string, att *netv1a1.Netw
 				err = nil
 				return
 			}
-			desiredBaseU = IPv4ToUint32(ipNet.IP)
-			desiredPrefixLen, _ = ipNet.Mask.Size()
+			desiredBaseU, desiredLastU = IPNetToBoundsU(ipNet)
 		} else {
 			glog.Errorf("NetworkAttachment %s/%s references Subnet %s, which does not exist now\n", ns, name, subnetName)
 			// This attachment will be requeued upon notification of subnet creation
@@ -389,7 +387,7 @@ func (ctlr *IPAMController) analyzeAndRelease(ns, name string, att *netv1a1.Netw
 			timeSlippers = timeSlippers.Append(parsed)
 			continue
 		}
-		if parsed.VNI != desiredVNI || parsed.SubnetBaseU != desiredBaseU || parsed.PrefixLen != desiredPrefixLen {
+		if parsed.VNI != desiredVNI || parsed.addrU < desiredBaseU || parsed.addrU > desiredLastU {
 			undesiredLocks = undesiredLocks.Append(parsed)
 			continue
 		}
@@ -420,7 +418,7 @@ func (ctlr *IPAMController) analyzeAndRelease(ns, name string, att *netv1a1.Netw
 	if nadat != nil && nadat.anticipatedIPv4 != nil {
 		anticipatedIPStr = nadat.anticipatedIPv4.String()
 	}
-	glog.V(4).Infof("processNetworkAttachment analyzed; na=%s/%s=%s, naRV=%s, subnet=%s, shouldExist=%v, desiredVNI=%x, desiredBaseU=%x, desiredPrefixLen=%d, lockInStatus=%s, lockForStatus=%s, locksToRelease=%s, timeSlippers=%s, Status.IPv4=%q, anticipatedIP=%s", ns, name, attUID, attRV, subnetName, att != nil, desiredVNI, desiredBaseU, desiredPrefixLen, lockInStatus, lockForStatus, locksToRelease, timeSlippers, ipInStatus, anticipatedIPStr)
+	glog.V(4).Infof("processNetworkAttachment analyzed; na=%s/%s=%s, naRV=%s, subnet=%s, shouldExist=%v, desiredVNI=%x, desiredBaseU=%x, desiredLastU=%x, lockInStatus=%s, lockForStatus=%s, locksToRelease=%s, timeSlippers=%s, Status.IPv4=%q, anticipatedIP=%s", ns, name, attUID, attRV, subnetName, att != nil, desiredVNI, desiredBaseU, desiredLastU, lockInStatus, lockForStatus, locksToRelease, timeSlippers, ipInStatus, anticipatedIPStr)
 	for _, lockToRelease := range locksToRelease {
 		err = ctlr.deleteIPLockObject(lockToRelease)
 		if err != nil {
@@ -428,6 +426,14 @@ func (ctlr *IPAMController) analyzeAndRelease(ns, name string, att *netv1a1.Netw
 		}
 	}
 	ok = true
+	return
+}
+
+func IPNetToBoundsU(ipNet *gonet.IPNet) (min, max uint32) {
+	min = IPv4ToUint32(ipNet.IP)
+	ones, bits := ipNet.Mask.Size()
+	delta := uint32(uint64(1)<<uint(bits-ones) - 1)
+	max = min + delta
 	return
 }
 
@@ -447,26 +453,23 @@ func (ctlr *IPAMController) deleteIPLockObject(parsed ParsedLock) error {
 	return nil
 }
 
-func (ctlr *IPAMController) pickAndLockAddress(ns, name string, att *netv1a1.NetworkAttachment, nadat *NetworkAttachmentData, subnetName string, desiredVNI, desiredBaseU uint32, desiredPrefixLen int) (lockForStatus ParsedLock, ipForStatus gonet.IP, err error) {
-	if nadat.vni != desiredVNI || nadat.subnetBaseU != desiredBaseU || nadat.prefixLen != desiredPrefixLen {
-		ctlr.clearSubnetDataForAttachment(nadat.vni, nadat.subnetBaseU, nadat.prefixLen, ns, name)
-		nadat.vni = desiredVNI
-		nadat.subnetBaseU = desiredBaseU
-		nadat.prefixLen = desiredPrefixLen
+func (ctlr *IPAMController) pickAndLockAddress(ns, name string, att *netv1a1.NetworkAttachment, subnetName string, vni, subnetBaseU, subnetLastU uint32) (lockForStatus ParsedLock, ipForStatus gonet.IP, err error) {
+	addrMin, addrMax := subnetBaseU, subnetLastU
+	if addrMax-addrMin >= 4 {
+		addrMin, addrMax = subnetBaseU+2, subnetLastU-1
 	}
-	snd := ctlr.getSubnetDataForAttachment(desiredVNI, desiredBaseU, desiredPrefixLen, att)
-	offset, ok := snd.PickAddress()
+	ipForStatusU, ok := ctlr.PickAddress(vni, addrMin, addrMax)
 	if !ok {
-		err = fmt.Errorf("No IP address available in %x/%x/%d for %s/%s", desiredVNI, desiredBaseU, desiredPrefixLen, ns, name)
+		err = fmt.Errorf("No IP address available in %x/%x--%x for %s/%s", vni, subnetBaseU, subnetLastU, ns, name)
 		return
 	}
-	ipForStatus = Uint32ToIPv4(desiredBaseU + offset)
-	glog.V(4).Infof("Picked address %s from %x/%x/%d for %s/%s\n", ipForStatus, desiredVNI, desiredBaseU, desiredPrefixLen, ns, name)
+	ipForStatus = Uint32ToIPv4(ipForStatusU)
+	glog.V(4).Infof("Picked address %s from %x/%x--%x for %s/%s\n", ipForStatus, vni, subnetBaseU, subnetLastU, ns, name)
 
 	// Now, try to lock that address
 
-	lockName := makeIPLockName4(desiredVNI, desiredBaseU, offset, desiredPrefixLen)
-	lockForStatus = ParsedLock{ns, lockName, desiredVNI, desiredBaseU, desiredPrefixLen, offset, k8stypes.UID(""), time.Time{}, nil}
+	lockName := makeIPLockName2(vni, ipForStatus)
+	lockForStatus = ParsedLock{ns, lockName, vni, ipForStatusU, k8stypes.UID(""), time.Time{}, nil}
 	aTrue := true
 	owners := []k8smetav1.OwnerReference{{
 		APIVersion: netv1a1.SchemeGroupVersion.String(),
@@ -520,7 +523,7 @@ func (ctlr *IPAMController) pickAndLockAddress(ns, name string, att *netv1a1.Net
 				return
 			}
 		}
-		releaseOK := snd.ReleaseAddress(offset)
+		releaseOK := ctlr.ReleaseAddress(vni, ipForStatusU)
 		if k8serrors.IsInvalid(err) || strings.Contains(strings.ToLower(err.Error()), "invalid") {
 			glog.Errorf("Permanent error creating IPLock %s for %s/%s (releaseOK=%v): %s\n", lockName, ns, name, releaseOK, err.Error())
 			err = nil
@@ -533,127 +536,6 @@ func (ctlr *IPAMController) pickAndLockAddress(ns, name string, att *netv1a1.Net
 	lockForStatus.UID = ipl2.UID
 	lockForStatus.CreationTime = ipl2.CreationTimestamp.Time
 	lockForStatus.Obj = ipl2
-	return
-}
-
-func (ctlr *IPAMController) getSubnetDataForAttachment(VNI, baseU uint32, prefixLen int, att *netv1a1.NetworkAttachment) *SubnetData {
-	added := false
-	ctlr.subnetsMutex.Lock()
-	defer func() {
-		ctlr.subnetsMutex.Unlock()
-		if added {
-			glog.V(4).Infof("Created SubnetData %x/%x/%d due to attachment %s/%s\n", VNI, baseU, prefixLen, att.Namespace, att.Name)
-		}
-	}()
-	snd := ctlr.subnets[SubnetKey{VNI, baseU, prefixLen}]
-	if snd == nil {
-		snd = &SubnetData{vni: VNI, baseAddress: baseU, prefixLen: prefixLen,
-			atts:  make(map[k8stypes.NamespacedName]struct{}),
-			locks: make(map[k8stypes.NamespacedName]struct{}),
-			addrs: NewBitmapAddressSet(1 << uint(32-prefixLen))}
-		ctlr.subnets[SubnetKey{VNI, baseU, prefixLen}] = snd
-		added = true
-	}
-	snd.atts[k8stypes.NamespacedName{att.Namespace, att.Name}] = struct{}{}
-	return snd
-}
-
-func (ctlr *IPAMController) clearSubnetDataForAttachment(VNI, baseU uint32, prefixLen int, ns, name string) {
-	removed := false
-	ctlr.subnetsMutex.Lock()
-	defer func() {
-		ctlr.subnetsMutex.Unlock()
-		if removed {
-			glog.V(4).Infof("Removed SubnetData %x/%x/%d, last attachment was %s/%s\n", VNI, baseU, prefixLen, ns, name)
-		}
-	}()
-	snd := ctlr.subnets[SubnetKey{VNI, baseU, prefixLen}]
-	if snd == nil {
-		return
-	}
-	if _, ok := snd.atts[k8stypes.NamespacedName{ns, name}]; !ok {
-		return
-	}
-	delete(snd.atts, k8stypes.NamespacedName{ns, name})
-	if len(snd.atts) > 0 || len(snd.locks) > 0 {
-		return
-	}
-	delete(ctlr.subnets, SubnetKey{VNI, baseU, prefixLen})
-	removed = true
-	return
-}
-
-func (ctlr *IPAMController) getSubnetDataForLock(VNI, baseU uint32, prefixLen int, ipl *netv1a1.IPLock, addIfMissing bool) *SubnetData {
-	added := false
-	ctlr.subnetsMutex.Lock()
-	defer func() {
-		ctlr.subnetsMutex.Unlock()
-		if added {
-			glog.V(4).Infof("Created SubnetData due to lock %s/%s\n", ipl.Namespace, ipl.Name)
-		}
-	}()
-	snd := ctlr.subnets[SubnetKey{VNI, baseU, prefixLen}]
-	if snd == nil {
-		if !addIfMissing {
-			return nil
-		}
-		snd = &SubnetData{vni: VNI, baseAddress: baseU, prefixLen: prefixLen,
-			atts:  make(map[k8stypes.NamespacedName]struct{}),
-			locks: make(map[k8stypes.NamespacedName]struct{}),
-			addrs: NewBitmapAddressSet(1 << uint(32-prefixLen))}
-		ctlr.subnets[SubnetKey{VNI, baseU, prefixLen}] = snd
-		added = true
-	}
-	snd.locks[k8stypes.NamespacedName{ipl.Namespace, ipl.Name}] = struct{}{}
-	return snd
-}
-
-func (ctlr *IPAMController) clearSubnetDataForLock(VNI, baseU uint32, prefixLen int, ns, lockName string) {
-	removed := false
-	ctlr.subnetsMutex.Lock()
-	defer func() {
-		ctlr.subnetsMutex.Unlock()
-		if removed {
-			glog.V(4).Infof("Removed SubnetData, last lock was %s/%s\n", ns, lockName)
-		}
-	}()
-	snd := ctlr.subnets[SubnetKey{VNI, baseU, prefixLen}]
-	if snd == nil {
-		return
-	}
-	if _, ok := snd.locks[k8stypes.NamespacedName{ns, lockName}]; !ok {
-		return
-	}
-	delete(snd.locks, k8stypes.NamespacedName{ns, lockName})
-	if len(snd.atts) > 0 || len(snd.locks) > 0 {
-		return
-	}
-	delete(ctlr.subnets, SubnetKey{VNI, baseU, prefixLen})
-	removed = true
-	return
-}
-
-func (snd *SubnetData) PickAddress() (offset uint32, ok bool) {
-	snd.addrsMutex.Lock()
-	defer func() { snd.addrsMutex.Unlock() }()
-	offsetI := snd.addrs.PickOne()
-	if offsetI < 0 {
-		return 0, false
-	}
-	return uint32(offsetI), true
-}
-
-func (snd *SubnetData) TakeAddress(offset uint32) (changed bool) {
-	snd.addrsMutex.Lock()
-	defer func() { snd.addrsMutex.Unlock() }()
-	changed = snd.addrs.Take(int(offset))
-	return
-}
-
-func (snd *SubnetData) ReleaseAddress(offset uint32) (changed bool) {
-	snd.addrsMutex.Lock()
-	defer func() { snd.addrsMutex.Unlock() }()
-	changed = snd.addrs.Release(int(offset))
 	return
 }
 
@@ -777,47 +659,28 @@ func Uint32ToIPv4(i uint32) gonet.IP {
 	return gonet.IPv4(uint8(i>>24), uint8(i>>16), uint8(i>>8), uint8(i))
 }
 
-func makeIPLockName(subnet *netv1a1.Subnet, ip gonet.IP) string {
-	_, ipNet, _ := gonet.ParseCIDR(subnet.Spec.IPv4)
-	return makeIPLockName3(subnet.Spec.VNI, ipNet, ip)
+func makeIPLockName2(VNI uint32, ip gonet.IP) string {
+	ipv4 := ip.To4()
+	return fmt.Sprintf("v1-%d-%d-%d-%d-%d", VNI, ipv4[0], ipv4[1], ipv4[2], ipv4[3])
 }
 
-func makeIPLockName3(VNI uint32, ipNet *gonet.IPNet, ip gonet.IP) string {
-	baseU := IPv4ToUint32(ipNet.IP)
-	ipU := IPv4ToUint32(ip)
-	prefixLen, _ := ipNet.Mask.Size()
-	return makeIPLockName4(VNI, baseU, ipU-baseU, prefixLen)
-}
-
-func makeIPLockName4(VNI uint32, baseU, offset uint32, prefixLen int) string {
-	return fmt.Sprintf("v1-%x-%x-%x-%d", VNI, baseU, offset, prefixLen)
-}
-
-func parseIPLockName(lockName string) (VNI uint32, subnetBaseU, offset uint32, prefixLen int, err error) {
+func parseIPLockName(lockName string) (VNI uint32, addrU uint32, err error) {
 	parts := strings.Split(lockName, "-")
-	if len(parts) != 5 || parts[0] != "v1" {
-		return 0, 0, 0, 0, fmt.Errorf("Lock name %q is malformed", lockName)
+	if len(parts) != 6 || parts[0] != "v1" {
+		return 0, 0, fmt.Errorf("Lock name %q is malformed", lockName)
 	}
-	vni64, err2 := strconv.ParseUint(parts[1], 16, 32)
+	vni64, err2 := strconv.ParseUint(parts[1], 10, 21)
 	if err2 != nil {
-		return 0, 0, 0, 0, fmt.Errorf("VNI in lockName %q is malformed: %s", lockName, err2)
+		return 0, 0, fmt.Errorf("VNI in lockName %q is malformed: %s", lockName, err2)
 	}
 	VNI = uint32(vni64)
-	base64, err2 := strconv.ParseUint(parts[2], 16, 32)
-	if err2 != nil {
-		return 0, 0, 0, 0, fmt.Errorf("Base address in lockName %q is malformed: %s", lockName, err2)
+	for i := 0; i < 4; i++ {
+		b64, err := strconv.ParseUint(parts[2+i], 10, 8)
+		if err != nil {
+			return 0, 0, fmt.Errorf("lockName %q is malformed at address byte %d: %s", lockName, i, err.Error())
+		}
+		addrU = addrU*256 + uint32(b64)
 	}
-	subnetBaseU = uint32(base64)
-	offset64, err2 := strconv.ParseUint(parts[3], 16, 32)
-	if err2 != nil {
-		return 0, 0, 0, 0, fmt.Errorf("Prefixlen in lockName %q is malformed: %s", lockName, err2)
-	}
-	offset = uint32(offset64)
-	prefixLen64, err := strconv.ParseInt(parts[4], 10, 32)
-	if err2 != nil {
-		return 0, 0, 0, 0, fmt.Errorf("Prefixlen in lockName %q is malformed: %s", lockName, err2)
-	}
-	prefixLen = int(prefixLen64)
 	return
 }
 
@@ -831,14 +694,8 @@ type ParsedLock struct {
 
 	VNI uint32
 
-	// SubnetBaseU is the first address of the subnet,
-	// expressed as a number.
-	SubnetBaseU uint32
-
-	PrefixLen int
-
-	// Offset is the difference between the locked address and SubnetBase
-	Offset uint32
+	// addrU is the locked address, expressed as a number.
+	addrU uint32
 
 	// UID identifies the lock object
 	UID k8stypes.UID
@@ -851,9 +708,9 @@ type ParsedLock struct {
 var zeroParsedLock ParsedLock
 
 func NewParsedLock(ipl *netv1a1.IPLock) (ans ParsedLock, err error) {
-	vni, base, offset, prefixLen, err := parseIPLockName(ipl.Name)
+	vni, addrU, err := parseIPLockName(ipl.Name)
 	if err == nil {
-		ans = ParsedLock{ipl.Namespace, ipl.Name, vni, base, prefixLen, offset, ipl.UID, ipl.CreationTimestamp.Time, ipl}
+		ans = ParsedLock{ipl.Namespace, ipl.Name, vni, addrU, ipl.UID, ipl.CreationTimestamp.Time, ipl}
 	}
 	return
 }
@@ -861,23 +718,16 @@ func NewParsedLock(ipl *netv1a1.IPLock) (ans ParsedLock, err error) {
 var _ fmt.Stringer = ParsedLock{}
 
 func (x ParsedLock) String() string {
-	return fmt.Sprintf("%d/%x+%x/%d=%s@%s", x.VNI, x.SubnetBaseU, x.Offset, x.PrefixLen, string(x.UID), x.CreationTime)
+	return fmt.Sprintf("%d/%x=%s@%s", x.VNI, x.addrU, string(x.UID), x.CreationTime)
 }
 
 func (x ParsedLock) GetIP() gonet.IP {
-	return Uint32ToIPv4(x.SubnetBaseU + x.Offset)
-}
-
-func (x ParsedLock) GetIPNet() *gonet.IPNet {
-	base := Uint32ToIPv4(x.SubnetBaseU)
-	mask := gonet.CIDRMask(x.PrefixLen, 32)
-	return &gonet.IPNet{base, mask}
+	return Uint32ToIPv4(x.addrU)
 }
 
 func (x ParsedLock) Equal(y ParsedLock) bool {
 	return x.VNI == y.VNI && x.UID == y.UID &&
-		x.CreationTime == y.CreationTime && x.SubnetBaseU == y.SubnetBaseU &&
-		x.Offset == y.Offset && x.PrefixLen == y.PrefixLen
+		x.CreationTime == y.CreationTime && x.addrU == y.addrU
 }
 
 func (x ParsedLock) IsBetterThan(y ParsedLock) bool {
