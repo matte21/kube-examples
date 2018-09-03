@@ -68,7 +68,7 @@ func (uis *SortedUInt32Set) Add(x uint32) bool {
 	}
 	nextNode := uis.SortedSet.GetByRank(rankX+1, false)
 	mergeWithNext := nextNode != nil && sortedset.SCORE(x+1) == nextNode.Score()
-	glog.V(5).Infof("\nAdd.In-midst: ss=%#+v, x=%d, prevNode=%#+v, nextNode=%#+v\n", *uis.SortedSet, x, prevNode, nextNode)
+	glog.V(5).Infof("\nAdd.In-midst: ss=%#+v, x=%08x, prevNode=%#+v, nextNode=%#+v\n", *uis.SortedSet, x, prevNode, nextNode)
 	if mergeWithPrev {
 		uis.SortedSet.Remove(xS)
 		if mergeWithNext {
@@ -171,7 +171,7 @@ func (uis *SortedUInt32Set) AddOneInRange(min, max uint32) (x uint32, ok bool) {
 		nGaps++
 	}
 	if nGaps <= bias+saib {
-		panic(fmt.Sprintf("AddOneInRange fail ss=%#+v, min=%d, max=%d, nGaps=%d, bias=%d, saib=%d", *uis, min, max, nGaps, bias, saib))
+		panic(fmt.Sprintf("AddOneInRange fail ss=%#+v, min=%08x, max=%08x, nGaps=%d, bias=%d, saib=%d", *uis, min, max, nGaps, bias, saib))
 	}
 
 	// Next, pick a random gap
@@ -233,9 +233,9 @@ func (uis *SortedUInt32Set) Find(x uint32) (node *sortedset.SortedSetNode, rank 
 // The return value is `true` iff the number was in the set.
 // The runtime cost is O(log N), where N is the number of runs in the set.
 func (uis *SortedUInt32Set) Remove(x uint32) bool {
-	glog.V(5).Infof("\nRemove(%d).Before: ss=%#+v\n", x, *uis.SortedSet)
+	glog.V(5).Infof("\nRemove(%08x).Before: ss=%#+v\n", x, *uis.SortedSet)
 	ans := uis.innerRemove(x)
-	glog.V(5).Infof("Remove(%d)=%v.After: ss=%#+v\n", x, ans, *uis.SortedSet)
+	glog.V(5).Infof("Remove(%08x)=%v.After: ss=%#+v\n", x, ans, *uis.SortedSet)
 	if uis.CheckLevel > 0 {
 		uis.Check(uis.CheckLevel > 1)
 	}

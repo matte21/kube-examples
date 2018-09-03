@@ -15,6 +15,12 @@ import:
   version: ^1.4
 - package: github.com/spf13/cobra
   version: ~0.0.3
+
+# Force a good enough version of pflag, because
+# cobra needs something better than the ancient version
+# that comes in due to client-go.
+- package: github.com/spf13/pflag
+  version: ~1.0.1
 - package: github.com/wangjia184/sortedset
 - package: k8s.io/apimachinery
   version: release-1.10

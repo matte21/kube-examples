@@ -45,8 +45,6 @@ import (
 const (
 	owningAttachmentIdxName = "owningAttachment"
 	attachmentSubnetIdxName = "subnet"
-
-	LastUInt32 = uint32(uint64(1)<<32 - 1)
 )
 
 type IPAMController struct {
@@ -70,19 +68,19 @@ type IPAMController struct {
 // thread working on the NetworkAttachment.  The data for a given
 // attachment is used to remember a status update while it is in
 // flight. When the attachment's ResourceVersion is either
-// anticipatingResourceVersion or anticiaptedResourceVersion and
-// anticipatedIPv4 != nil then that address has been written into the
+// anticipatingResourceVersion or anticiaptedResourceVersion,
+// anticipationSubnetRV is the ResourceVersion of the attachment's
+// subnet, and anticipatedIPv4 != nil then that address has been
+// chosen based on that subnet revision and written into the
 // attachment's status and there exists an IPLock that supports this,
 // even if this controller has not yet been notified about that lock;
 // when any other ResourceVersion is seen these three fields get set
 // to their zero value.
 type NetworkAttachmentData struct {
-	//vni                         uint32
-	//subnetBaseU                 uint32
-	//prefixLen                   int
 	anticipatedIPv4             gonet.IP
 	anticipatingResourceVersion string
 	anticipatedResourceVersion  string
+	anticipationSubnetRV        string
 }
 
 func NewIPAMController(netIfc kosclientv1a1.NetworkV1alpha1Interface,
@@ -224,7 +222,12 @@ func (ctlr *IPAMController) OnLockNotify(ipl *netv1a1.IPLock, op string, exists 
 		addrOp = "released"
 		changed = ctlr.ReleaseAddress(vni, addrU)
 	}
-	glog.V(4).Infof("At notify of %s of IPLock %s/%s, %s %s, changed=%v\n", op, ipl.Namespace, ipl.Name, addrOp, Uint32ToIPv4(addrU), changed)
+	ownerNames, _ := OwningAttachments(ipl)
+	glog.V(4).Infof("At notify of %s of IPLock %s/%s, %s %s, changed=%v, numOwners=%d\n", op, ipl.Namespace, ipl.Name, addrOp, Uint32ToIPv4(addrU), changed, len(ownerNames))
+	for _, ownerName := range ownerNames {
+		glog.V(5).Infof("Queuing NetworkAttachment %s/%s due to notification about IPLock %s\n", ipl.Namespace, ownerName, ipl.Name)
+		ctlr.queue.Add(k8stypes.NamespacedName{ipl.Namespace, ownerName})
+	}
 }
 
 func (ctlr *IPAMController) TakeAddress(vni, addrU uint32) (changed bool) {
@@ -296,7 +299,7 @@ func (ctlr *IPAMController) processNetworkAttachment(ns, name string) error {
 		return nil
 	}
 	nadat := ctlr.getNetworkAttachmentData(ns, name, att != nil)
-	subnetName, desiredVNI, desiredBaseU, desiredPrefixLen, lockInStatus, lockForStatus, err, ok := ctlr.analyzeAndRelease(ns, name, att, nadat)
+	subnetName, subnetRV, desiredVNI, desiredBaseU, desiredPrefixLen, lockInStatus, lockForStatus, err, ok := ctlr.analyzeAndRelease(ns, name, att, nadat)
 	if err != nil || !ok {
 		return err
 	}
@@ -323,14 +326,15 @@ func (ctlr *IPAMController) processNetworkAttachment(ns, name string) error {
 			return err
 		}
 	}
-	return ctlr.setIPInStatus(ns, name, att, nadat, lockForStatus, ipForStatus)
+	return ctlr.setIPInStatus(ns, name, att, nadat, subnetRV, lockForStatus, ipForStatus)
 }
 
-func (ctlr *IPAMController) analyzeAndRelease(ns, name string, att *netv1a1.NetworkAttachment, nadat *NetworkAttachmentData) (subnetName string, desiredVNI, desiredBaseU, desiredLastU uint32, lockInStatus, lockForStatus ParsedLock, err error, ok bool) {
+func (ctlr *IPAMController) analyzeAndRelease(ns, name string, att *netv1a1.NetworkAttachment, nadat *NetworkAttachmentData) (subnetName, subnetRV string, desiredVNI, desiredBaseU, desiredLastU uint32, lockInStatus, lockForStatus ParsedLock, err error, ok bool) {
 	statusLockUID := "<none>"
 	ipInStatus := ""
 	attUID := "."
 	attRV := "."
+	subnetRV = "."
 	var subnet *netv1a1.Subnet
 	if att != nil {
 		statusLockUID = att.Status.LockUID
@@ -346,6 +350,7 @@ func (ctlr *IPAMController) analyzeAndRelease(ns, name string, att *netv1a1.Netw
 		}
 		if subnet != nil {
 			desiredVNI = subnet.Spec.VNI
+			subnetRV = subnet.ResourceVersion
 			var ipNet *gonet.IPNet
 			_, ipNet, err = gonet.ParseCIDR(subnet.Spec.IPv4)
 			if err != nil {
@@ -396,9 +401,10 @@ func (ctlr *IPAMController) analyzeAndRelease(ns, name string, att *netv1a1.Netw
 		}
 		usableLocks = usableLocks.Append(parsed)
 	}
-	if nadat != nil && (att == nil || nadat.anticipatingResourceVersion != att.ResourceVersion && nadat.anticipatedResourceVersion != att.ResourceVersion) {
+	if nadat != nil && (att == nil || nadat.anticipatingResourceVersion != att.ResourceVersion && nadat.anticipatedResourceVersion != att.ResourceVersion || nadat.anticipationSubnetRV != subnetRV) {
 		nadat.anticipatingResourceVersion = ""
 		nadat.anticipatedResourceVersion = ""
+		nadat.anticipationSubnetRV = ""
 		nadat.anticipatedIPv4 = nil
 	}
 	var usableToRelease ParsedLockList
@@ -539,16 +545,17 @@ func (ctlr *IPAMController) pickAndLockAddress(ns, name string, att *netv1a1.Net
 	return
 }
 
-func (ctlr *IPAMController) setIPInStatus(ns, name string, att *netv1a1.NetworkAttachment, nadat *NetworkAttachmentData, lockForStatus ParsedLock, ipForStatus gonet.IP) error {
+func (ctlr *IPAMController) setIPInStatus(ns, name string, att *netv1a1.NetworkAttachment, nadat *NetworkAttachmentData, subnetRV string, lockForStatus ParsedLock, ipForStatus gonet.IP) error {
 	att2 := att.DeepCopy()
 	att2.Status.LockUID = string(lockForStatus.UID)
 	att2.Status.IPv4 = ipForStatus.String()
 	attachmentOps := ctlr.netIfc.NetworkAttachments(ns)
 	att3, err := attachmentOps.Update(att2)
 	if err == nil {
-		glog.V(4).Infof("Recorded locked address %s in status of %s/%s, old ResourceVersion=%s, new ResourceVersion=%s\n", ipForStatus, ns, name, att.ResourceVersion, att3.ResourceVersion)
+		glog.V(4).Infof("Recorded locked address %s in status of %s/%s, old ResourceVersion=%s, new ResourceVersion=%s, subnetRV=%s\n", ipForStatus, ns, name, att.ResourceVersion, att3.ResourceVersion, subnetRV)
 		nadat.anticipatingResourceVersion = att.ResourceVersion
 		nadat.anticipatedResourceVersion = att3.ResourceVersion
+		nadat.anticipationSubnetRV = subnetRV
 		nadat.anticipatedIPv4 = ipForStatus
 		return nil
 	}
