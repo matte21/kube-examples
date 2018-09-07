@@ -22,5 +22,6 @@ spec:
         - /network-apiserver
         - --etcd-servers=http://localhost:2379
         - -v=5
+        - --enable-admission-plugins=CheckSubnets
       - name: etcd
         image: quay.io/coreos/etcd:v3.3.9

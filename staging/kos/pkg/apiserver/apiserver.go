@@ -102,7 +102,7 @@ func (cfg *Config) Complete() CompletedConfig {
 
 // New returns a new instance of NetworkServer from the given config.
 func (c completedConfig) New() (*NetworkServer, error) {
-	genericServer, err := c.GenericConfig.New("sample-apiserver", genericapiserver.EmptyDelegate)
+	genericServer, err := c.GenericConfig.New("network-apiserver", genericapiserver.EmptyDelegate)
 	if err != nil {
 		return nil, err
 	}

@@ -21,6 +21,7 @@ import (
 	"io"
 	"net"
 
+	"github.com/golang/glog"
 	"github.com/spf13/cobra"
 
 	utilerrors "k8s.io/apimachinery/pkg/util/errors"
@@ -28,6 +29,7 @@ import (
 	genericapiserver "k8s.io/apiserver/pkg/server"
 	genericoptions "k8s.io/apiserver/pkg/server/options"
 	"k8s.io/examples/staging/kos/pkg/admission/networkinitializer"
+	"k8s.io/examples/staging/kos/pkg/admission/plugin/checksubnets"
 	"k8s.io/examples/staging/kos/pkg/apis/network/v1alpha1"
 	"k8s.io/examples/staging/kos/pkg/apiserver"
 	clientset "k8s.io/examples/staging/kos/pkg/client/clientset/internalversion"
@@ -89,16 +91,12 @@ func (o NetworkServerOptions) Validate(args []string) error {
 }
 
 func (o *NetworkServerOptions) Complete() error {
-	return nil
-}
-
-func (o *NetworkServerOptions) Config() (*apiserver.Config, error) {
 	// register admission plugins
-	// Some day we might have some
+	checksubnets.Register(o.RecommendedOptions.Admission)
 
 	// TODO have a "real" external address
 	if err := o.RecommendedOptions.SecureServing.MaybeDefaultWithSelfSignedCerts("localhost", nil, []net.IP{net.ParseIP("127.0.0.1")}); err != nil {
-		return nil, fmt.Errorf("error creating self-signed certificates: %v", err)
+		return fmt.Errorf("error creating self-signed certificates: %v", err)
 	}
 
 	o.RecommendedOptions.ExtraAdmissionInitializers = func(c *genericapiserver.RecommendedConfig) ([]admission.PluginInitializer, error) {
@@ -111,6 +109,10 @@ func (o *NetworkServerOptions) Config() (*apiserver.Config, error) {
 		return []admission.PluginInitializer{networkinitializer.New(informerFactory)}, nil
 	}
 
+	return nil
+}
+
+func (o *NetworkServerOptions) Config() (*apiserver.Config, error) {
 	serverConfig := genericapiserver.NewRecommendedConfig(apiserver.Codecs)
 	if err := o.RecommendedOptions.ApplyTo(serverConfig, apiserver.Scheme); err != nil {
 		return nil, err
@@ -135,9 +137,12 @@ func (o NetworkServerOptions) RunNetworkServer(stopCh <-chan struct{}) error {
 	}
 
 	server.GenericAPIServer.AddPostStartHook("start-sample-server-informers", func(context genericapiserver.PostStartHookContext) error {
+		glog.V(1).Infoln("SharedInformerFactory about to start")
 		config.GenericConfig.SharedInformerFactory.Start(context.StopCh)
+		glog.V(1).Infoln("SharedInformerFactory started")
 		return nil
 	})
+	glog.V(1).Infoln("start-sample-server-informers PostStartHook added")
 
 	return server.GenericAPIServer.PrepareRun().Run(stopCh)
 }
