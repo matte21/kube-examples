@@ -38,7 +38,7 @@ import (
 
 const defaultEtcdPathPrefix = "/registry/network.kubernetes.io"
 
-type NetworkServerOptions struct {
+type NetworkAPIServerOptions struct {
 	RecommendedOptions *genericoptions.RecommendedOptions
 
 	SharedInformerFactory informers.SharedInformerFactory
@@ -46,8 +46,8 @@ type NetworkServerOptions struct {
 	StdErr                io.Writer
 }
 
-func NewNetworkServerOptions(out, errOut io.Writer) *NetworkServerOptions {
-	o := &NetworkServerOptions{
+func NewNetworkAPIServerOptions(out, errOut io.Writer) *NetworkAPIServerOptions {
+	o := &NetworkAPIServerOptions{
 		RecommendedOptions: genericoptions.NewRecommendedOptions(defaultEtcdPathPrefix, apiserver.Codecs.LegacyCodec(v1alpha1.SchemeGroupVersion)),
 
 		StdOut: out,
@@ -57,9 +57,9 @@ func NewNetworkServerOptions(out, errOut io.Writer) *NetworkServerOptions {
 	return o
 }
 
-// NewCommandStartNetworkServer provides a CLI handler for 'start master' command
-// with a default NetworkServerOptions.
-func NewCommandStartNetworkServer(defaults *NetworkServerOptions, stopCh <-chan struct{}) *cobra.Command {
+// NewCommandStartNetworkAPIServer provides a CLI handler for 'start master' command
+// with a default NetworkAPIServerOptions.
+func NewCommandStartNetworkAPIServer(defaults *NetworkAPIServerOptions, stopCh <-chan struct{}) *cobra.Command {
 	o := *defaults
 	cmd := &cobra.Command{
 		Short: "Launch a network API server",
@@ -71,7 +71,7 @@ func NewCommandStartNetworkServer(defaults *NetworkServerOptions, stopCh <-chan 
 			if err := o.Validate(args); err != nil {
 				return err
 			}
-			if err := o.RunNetworkServer(stopCh); err != nil {
+			if err := o.RunNetworkAPIServer(stopCh); err != nil {
 				return err
 			}
 			return nil
@@ -84,13 +84,13 @@ func NewCommandStartNetworkServer(defaults *NetworkServerOptions, stopCh <-chan 
 	return cmd
 }
 
-func (o NetworkServerOptions) Validate(args []string) error {
+func (o NetworkAPIServerOptions) Validate(args []string) error {
 	errors := []error{}
 	errors = append(errors, o.RecommendedOptions.Validate()...)
 	return utilerrors.NewAggregate(errors)
 }
 
-func (o *NetworkServerOptions) Complete() error {
+func (o *NetworkAPIServerOptions) Complete() error {
 	// register admission plugins
 	checksubnets.Register(o.RecommendedOptions.Admission)
 
@@ -102,7 +102,7 @@ func (o *NetworkServerOptions) Complete() error {
 	return nil
 }
 
-func (o *NetworkServerOptions) Config() (*apiserver.Config, error) {
+func (o *NetworkAPIServerOptions) Config() (*apiserver.Config, error) {
 	o.RecommendedOptions.ExtraAdmissionInitializers = func(c *genericapiserver.RecommendedConfig) ([]admission.PluginInitializer, error) {
 		client, err := clientset.NewForConfig(c.LoopbackClientConfig)
 		if err != nil {
@@ -125,7 +125,7 @@ func (o *NetworkServerOptions) Config() (*apiserver.Config, error) {
 	return config, nil
 }
 
-func (o NetworkServerOptions) RunNetworkServer(stopCh <-chan struct{}) error {
+func (o NetworkAPIServerOptions) RunNetworkAPIServer(stopCh <-chan struct{}) error {
 	config, err := o.Config()
 	if err != nil {
 		return err

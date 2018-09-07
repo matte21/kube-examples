@@ -37,8 +37,8 @@ func main() {
 	}
 
 	stopCh := genericapiserver.SetupSignalHandler()
-	options := server.NewNetworkServerOptions(os.Stdout, os.Stderr)
-	cmd := server.NewCommandStartNetworkServer(options, stopCh)
+	options := server.NewNetworkAPIServerOptions(os.Stdout, os.Stderr)
+	cmd := server.NewCommandStartNetworkAPIServer(options, stopCh)
 	cmd.Flags().AddGoFlagSet(flag.CommandLine)
 	if err := cmd.Execute(); err != nil {
 		glog.Fatal(err)

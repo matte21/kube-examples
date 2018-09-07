@@ -70,8 +70,8 @@ type Config struct {
 	ExtraConfig   ExtraConfig
 }
 
-// NetworkServer contains state for a Kubernetes cluster master/api server.
-type NetworkServer struct {
+// NetworkAPIServer contains state for a Kubernetes cluster master/api server.
+type NetworkAPIServer struct {
 	GenericAPIServer *genericapiserver.GenericAPIServer
 }
 
@@ -100,14 +100,14 @@ func (cfg *Config) Complete() CompletedConfig {
 	return CompletedConfig{&c}
 }
 
-// New returns a new instance of NetworkServer from the given config.
-func (c completedConfig) New() (*NetworkServer, error) {
+// New returns a new instance of NetworkAPIServer from the given config.
+func (c completedConfig) New() (*NetworkAPIServer, error) {
 	genericServer, err := c.GenericConfig.New("network-apiserver", genericapiserver.EmptyDelegate)
 	if err != nil {
 		return nil, err
 	}
 
-	s := &NetworkServer{
+	s := &NetworkAPIServer{
 		GenericAPIServer: genericServer,
 	}
 
