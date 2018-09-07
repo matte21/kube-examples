@@ -99,6 +99,10 @@ func (o *NetworkServerOptions) Complete() error {
 		return fmt.Errorf("error creating self-signed certificates: %v", err)
 	}
 
+	return nil
+}
+
+func (o *NetworkServerOptions) Config() (*apiserver.Config, error) {
 	o.RecommendedOptions.ExtraAdmissionInitializers = func(c *genericapiserver.RecommendedConfig) ([]admission.PluginInitializer, error) {
 		client, err := clientset.NewForConfig(c.LoopbackClientConfig)
 		if err != nil {
@@ -109,10 +113,6 @@ func (o *NetworkServerOptions) Complete() error {
 		return []admission.PluginInitializer{networkinitializer.New(informerFactory)}, nil
 	}
 
-	return nil
-}
-
-func (o *NetworkServerOptions) Config() (*apiserver.Config, error) {
 	serverConfig := genericapiserver.NewRecommendedConfig(apiserver.Codecs)
 	if err := o.RecommendedOptions.ApplyTo(serverConfig, apiserver.Scheme); err != nil {
 		return nil, err
@@ -137,9 +137,10 @@ func (o NetworkServerOptions) RunNetworkServer(stopCh <-chan struct{}) error {
 	}
 
 	server.GenericAPIServer.AddPostStartHook("start-sample-server-informers", func(context genericapiserver.PostStartHookContext) error {
-		glog.V(1).Infoln("SharedInformerFactory about to start")
+		glog.V(1).Infoln("SharedInformerFactorys about to start")
 		config.GenericConfig.SharedInformerFactory.Start(context.StopCh)
-		glog.V(1).Infoln("SharedInformerFactory started")
+		o.SharedInformerFactory.Start(context.StopCh)
+		glog.V(1).Infoln("SharedInformerFactorys started")
 		return nil
 	})
 	glog.V(1).Infoln("start-sample-server-informers PostStartHook added")
