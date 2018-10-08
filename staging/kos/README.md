@@ -29,9 +29,10 @@ This example adds the following to the Kubernetes cluster.
 - An API extension server Deployment, with 1 replica, with a pod
   template that runs two containers:
 
--- the API extension server container that serves the custom resources
-   used in this example, and
--- an etcd server dedicated to this example.
+  - the API extension server container that serves the custom resources
+    used in this example, and
+
+  - an etcd server dedicated to this example.
 
 - A Deployment of a controller that assigns IP addresses.
 
