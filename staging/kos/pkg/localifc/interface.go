@@ -27,7 +27,9 @@ type Interface interface {
 }
 
 type NetworkInterface struct {
-	Name string
-	MAC  net.HardwareAddr
-	ip   net.IP
+	Name     string
+	VNI      uint32
+	guestMAC net.HardwareAddr
+	guestIP  net.IP
+	hostIP   net.IP
 }
