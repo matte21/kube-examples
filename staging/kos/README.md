@@ -112,6 +112,51 @@ The problems that the SDN solves are as follows.
 ## The IPAM Controller
 
 This is a singleton that assigns IP addresses to NetworkAttachments.
+It is managed by a Deployment object with its number of replicas set
+to 1.
+
+The following two approaches were considered, with the latter one
+taken.
+
+One approach would be to make the IP address controller keep itself
+appraised of all IP address assignments and assign unused addresses
+when needed based on an in-memory cache of all the assigned addresses.
+This can be correct only if it is impossible for there to be
+two such processes running at once.  Kubernetes does not actually make
+such a guarantee.  For example, if a kubelet wedges for any reason ---
+and this is not inconceivable, considering the complexity and
+pluggability of that thing --- then no pods created by that kubelet
+will be health-checked nor destroyed.
+
+The approach taken is to use the Kubernetes API machinery to construct
+locks on IP addresses.  A lock is implemented by an API object whose
+name is a function of the VNI and the IP address.  Attempting to take
+a lock amounts to trying to create the IP lock object; creation of the
+object equals successfully taking the lock.  A lock object's
+`ObjectMeta.OwnerReferences` include a reference to the
+NetworkAttachment that holds the lock.
+
+This controller does not enforce or assume any connections between the
+lifecycles of NetworkAttachments and their Subnets; either can be
+created or deleted at any time.  There are, however, some enforced
+consistency constraints on certain fields.
+
+As with any controller, one of the IP address controller's problems is
+how to avoid doing duplicate work while waiting for its earlier
+actions to fully take effect.  To save on client/server traffic, this
+controller does not actively query the apiservers to find out its
+previous actions; rather, this controller simply waits to be informed
+through its Informers.  In the interim, this conrtroller maintains a
+record of actions in flight.  In particular, for each address
+assignment in flight, the controller records: the ResourceVersion of
+the NetworkAttachment that was seen to need an IP address, the
+ResourceVersion of the Subnet that was referenced when making the
+assignment, the IP address assigned, and the ResourceVersion of the
+NetworkAttachment created by the update that writes the assigned
+address into the status of the attachment object.  As long as the
+Subnet's ResourceVersion is unchanged and the attachment object's
+ResourceVersion is one of the two recorded, the record is valid and
+retained.
 
 ## The Network Agent
 
@@ -124,7 +169,7 @@ the irrelevant ones.  A NetworkAttachment object X is relevant to node
 N if and only if there exists a NetworkAttachment object Y such that
 X and Y have the same VNI and Y is on node N.
 
-The following solutions were considered, with the last one adopted.
+The following approaches were considered, with the last one adopted.
 
 - A network agent has one Informer whose list&watch get all
   NetworkAttachment objects from the apiservers and filtering is done
