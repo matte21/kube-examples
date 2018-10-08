@@ -645,15 +645,7 @@ func Peel(obj interface{}) k8sruntime.Object {
 	}
 }
 
-func SubnetNSN(obj *netv1a1.Subnet) k8stypes.NamespacedName {
-	return k8stypes.NamespacedName{obj.Namespace, obj.Name}
-}
-
 func AttNSN(obj *netv1a1.NetworkAttachment) k8stypes.NamespacedName {
-	return k8stypes.NamespacedName{obj.Namespace, obj.Name}
-}
-
-func LockNSN(obj *netv1a1.IPLock) k8stypes.NamespacedName {
 	return k8stypes.NamespacedName{obj.Namespace, obj.Name}
 }
 
