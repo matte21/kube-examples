@@ -124,7 +124,7 @@ func (d *CheckSubnets) SetInternalNetworkInformerFactory(f informers.SharedInfor
 	glog.V(1).Infoln("Subnets lister created")
 }
 
-// ValidaValidateInitializationte checks whether the plugin was correctly initialized.
+// ValidateInitialization checks whether the plugin was correctly initialized.
 func (d *CheckSubnets) ValidateInitialization() error {
 	if d.lister == nil {
 		return fmt.Errorf("missing subnet lister")
