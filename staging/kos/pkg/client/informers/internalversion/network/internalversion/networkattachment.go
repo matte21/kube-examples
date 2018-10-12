@@ -26,7 +26,7 @@ import (
 	watch "k8s.io/apimachinery/pkg/watch"
 	cache "k8s.io/client-go/tools/cache"
 	network "k8s.io/examples/staging/kos/pkg/apis/network"
-	clientsetinternalversion "k8s.io/examples/staging/kos/pkg/client/clientset/internalversion"
+	clientset_internalversion "k8s.io/examples/staging/kos/pkg/client/clientset/internalversion"
 	internalinterfaces "k8s.io/examples/staging/kos/pkg/client/informers/internalversion/internalinterfaces"
 	internalversion "k8s.io/examples/staging/kos/pkg/client/listers/network/internalversion"
 )
@@ -47,14 +47,14 @@ type networkAttachmentInformer struct {
 // NewNetworkAttachmentInformer constructs a new informer for NetworkAttachment type.
 // Always prefer using an informer factory to get a shared informer instead of getting an independent
 // one. This reduces memory footprint and number of connections to the server.
-func NewNetworkAttachmentInformer(client clientsetinternalversion.Interface, namespace string, resyncPeriod time.Duration, indexers cache.Indexers) cache.SharedIndexInformer {
+func NewNetworkAttachmentInformer(client clientset_internalversion.Interface, namespace string, resyncPeriod time.Duration, indexers cache.Indexers) cache.SharedIndexInformer {
 	return NewFilteredNetworkAttachmentInformer(client, namespace, resyncPeriod, indexers, nil)
 }
 
 // NewFilteredNetworkAttachmentInformer constructs a new informer for NetworkAttachment type.
 // Always prefer using an informer factory to get a shared informer instead of getting an independent
 // one. This reduces memory footprint and number of connections to the server.
-func NewFilteredNetworkAttachmentInformer(client clientsetinternalversion.Interface, namespace string, resyncPeriod time.Duration, indexers cache.Indexers, tweakListOptions internalinterfaces.TweakListOptionsFunc) cache.SharedIndexInformer {
+func NewFilteredNetworkAttachmentInformer(client clientset_internalversion.Interface, namespace string, resyncPeriod time.Duration, indexers cache.Indexers, tweakListOptions internalinterfaces.TweakListOptionsFunc) cache.SharedIndexInformer {
 	return cache.NewSharedIndexInformer(
 		&cache.ListWatch{
 			ListFunc: func(options v1.ListOptions) (runtime.Object, error) {
@@ -76,7 +76,7 @@ func NewFilteredNetworkAttachmentInformer(client clientsetinternalversion.Interf
 	)
 }
 
-func (f *networkAttachmentInformer) defaultInformer(client clientsetinternalversion.Interface, resyncPeriod time.Duration) cache.SharedIndexInformer {
+func (f *networkAttachmentInformer) defaultInformer(client clientset_internalversion.Interface, resyncPeriod time.Duration) cache.SharedIndexInformer {
 	return NewFilteredNetworkAttachmentInformer(client, f.namespace, resyncPeriod, cache.Indexers{cache.NamespaceIndex: cache.MetaNamespaceIndexFunc}, f.tweakListOptions)
 }
 

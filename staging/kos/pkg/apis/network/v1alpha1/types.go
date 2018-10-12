@@ -30,10 +30,14 @@ type NetworkAttachmentList struct {
 
 type NetworkAttachmentSpec struct {
 	// Node is the name of the node where the attachment should appear
-	Node string `json:"node,omitempty" protobuf:"bytes,1,opt,name=node"`
+	Node string `json:"node" protobuf:"bytes,1,name=node"`
 
 	// Subnet is the object name of the subnet of this attachment
-	Subnet string `json:"subnet,omitempty" protobuf:"bytes,2,opt,name=subnet"`
+	Subnet string `json:"subnet" protobuf:"bytes,2,name=subnet"`
+
+	// VNI identifies the virtual network this NetworkAttachment belongs to.
+	// Valid values are in the range [1,2097151].
+	VNI uint32 `json:"vni" protobuf:"bytes,3,name=vni"`
 }
 
 type NetworkAttachmentStatus struct {
@@ -50,6 +54,9 @@ type NetworkAttachmentStatus struct {
 	// attachment on its node, or the empty string to indicate no
 	// implementation.
 	IfcName string `json:"ifcName,omitempty" protobuf:"bytes,4,opt,name=ifcname"`
+
+	// HostIP is the IP address of the node the attachment is bound to.
+	HostIP string `json:"hostIP,omitempty" protobuf:"bytes,5,opt,name=hostIP"`
 }
 
 type NetworkAttachmentErrors struct {
@@ -67,7 +74,7 @@ type NetworkAttachment struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata,omitempty" protobuf:"bytes,1,opt,name=metadata"`
 
-	Spec   NetworkAttachmentSpec   `json:"spec,omitempty" protobuf:"bytes,2,opt,name=spec"`
+	Spec   NetworkAttachmentSpec   `json:"spec" protobuf:"bytes,2,name=spec"`
 	Status NetworkAttachmentStatus `json:"status,omitempty" protobuf:"bytes,3,opt,name=status"`
 }
 
@@ -95,7 +102,7 @@ type Subnet struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata,omitempty" protobuf:"bytes,1,opt,name=metadata"`
 
-	Spec   SubnetSpec   `json:"spec,omitempty" protobuf:"bytes,2,opt,name=spec"`
+	Spec   SubnetSpec   `json:"spec" protobuf:"bytes,2,name=spec"`
 	Status SubnetStatus `json:"status,omitempty" protobuf:"bytes,3,opt,name=status"`
 }
 

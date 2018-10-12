@@ -18,7 +18,7 @@ package v1alpha1
 
 import (
 	"fmt"
-	
+
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
@@ -68,7 +68,7 @@ func addFieldConversions(scheme *runtime.Scheme) error {
 
 func convertNetworkAttachmentFields(label, value string) (internalLabel, internalValue string, err error) {
 	switch label {
-	case "metadata.name", "metadata.namespace", "spec.node", "spec.subnet":
+	case "metadata.name", "metadata.namespace", "spec.node", "spec.subnet", "spec.vni":
 		return label, value, nil
 	default:
 		return "", "", fmt.Errorf("NetworkAttachment does not have field with label %q", label)
