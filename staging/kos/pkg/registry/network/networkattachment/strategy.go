@@ -40,11 +40,11 @@ func NewStrategy(typer runtime.ObjectTyper) networkattachmentStrategy {
 // GetAttrs returns labels.Set, fields.Set, the presence of Initializers if any
 // and error in case the given runtime.Object is not a NetworkAttachment
 func GetAttrs(obj runtime.Object) (labels.Set, fields.Set, bool, error) {
-	apiserver, ok := obj.(*network.NetworkAttachment)
+	networkattachment, ok := obj.(*network.NetworkAttachment)
 	if !ok {
 		return nil, nil, false, fmt.Errorf("given object is not a NetworkAttachment")
 	}
-	return labels.Set(apiserver.ObjectMeta.Labels), SelectableFields(apiserver), apiserver.Initializers != nil, nil
+	return labels.Set(networkattachment.ObjectMeta.Labels), SelectableFields(networkattachment), networkattachment.Initializers != nil, nil
 }
 
 // MatchNetworkAttachment is the filter used by the generic etcd backend to watch events

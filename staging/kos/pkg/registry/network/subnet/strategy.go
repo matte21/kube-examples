@@ -41,11 +41,11 @@ func NewStrategy(typer runtime.ObjectTyper) subnetStrategy {
 // GetAttrs returns labels.Set, fields.Set, the presence of Initializers if any
 // and error in case the given runtime.Object is not a Subnet
 func GetAttrs(obj runtime.Object) (labels.Set, fields.Set, bool, error) {
-	apiserver, ok := obj.(*network.Subnet)
+	subnet, ok := obj.(*network.Subnet)
 	if !ok {
 		return nil, nil, false, fmt.Errorf("given object is not a Subnet")
 	}
-	return labels.Set(apiserver.ObjectMeta.Labels), SelectableFields(apiserver), apiserver.Initializers != nil, nil
+	return labels.Set(subnet.ObjectMeta.Labels), SelectableFields(subnet), subnet.Initializers != nil, nil
 }
 
 // MatchSubnet is the filter used by the generic etcd backend to watch events
