@@ -31,9 +31,9 @@ import (
 	"k8s.io/examples/staging/kos/pkg/apis/network/install"
 	"k8s.io/examples/staging/kos/pkg/apis/network/v1alpha1"
 	networkregistry "k8s.io/examples/staging/kos/pkg/registry"
-	subnetstorage "k8s.io/examples/staging/kos/pkg/registry/network/subnet"
-	networkattachmentstorage "k8s.io/examples/staging/kos/pkg/registry/network/networkattachment"
 	iplockstorage "k8s.io/examples/staging/kos/pkg/registry/network/iplock"
+	networkattachmentstorage "k8s.io/examples/staging/kos/pkg/registry/network/networkattachment"
+	subnetstorage "k8s.io/examples/staging/kos/pkg/registry/network/subnet"
 )
 
 var (
