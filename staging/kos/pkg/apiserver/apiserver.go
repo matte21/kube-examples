@@ -30,6 +30,7 @@ import (
 	"k8s.io/examples/staging/kos/pkg/apis/network"
 	"k8s.io/examples/staging/kos/pkg/apis/network/install"
 	"k8s.io/examples/staging/kos/pkg/apis/network/v1alpha1"
+	networkinformers "k8s.io/examples/staging/kos/pkg/client/informers/internalversion"
 	networkregistry "k8s.io/examples/staging/kos/pkg/registry"
 	iplockstorage "k8s.io/examples/staging/kos/pkg/registry/network/iplock"
 	networkattachmentstorage "k8s.io/examples/staging/kos/pkg/registry/network/networkattachment"
@@ -62,12 +63,13 @@ func init() {
 }
 
 type ExtraConfig struct {
-	// Place you custom config here.
+	// Place your custom config here.
+	NetworkSharedInformerFactory networkinformers.SharedInformerFactory
 }
 
 type Config struct {
 	GenericConfig *genericapiserver.RecommendedConfig
-	ExtraConfig   ExtraConfig
+	ExtraConfig   *ExtraConfig
 }
 
 // NetworkAPIServer contains state for a Kubernetes cluster master/api server.
@@ -89,7 +91,7 @@ type CompletedConfig struct {
 func (cfg *Config) Complete() CompletedConfig {
 	c := completedConfig{
 		cfg.GenericConfig.Complete(),
-		&cfg.ExtraConfig,
+		cfg.ExtraConfig,
 	}
 
 	c.GenericConfig.Version = &version.Info{
@@ -115,7 +117,7 @@ func (c completedConfig) New() (*NetworkAPIServer, error) {
 	apiGroupInfo.GroupMeta.GroupVersion = v1alpha1.SchemeGroupVersion
 	v1alpha1storage := map[string]rest.Storage{}
 	v1alpha1storage["networkattachments"] = networkregistry.RESTInPeace(networkattachmentstorage.NewREST(Scheme, c.GenericConfig.RESTOptionsGetter))
-	v1alpha1storage["subnets"] = networkregistry.RESTInPeace(subnetstorage.NewREST(Scheme, c.GenericConfig.RESTOptionsGetter))
+	v1alpha1storage["subnets"] = networkregistry.RESTInPeace(subnetstorage.NewREST(Scheme, c.GenericConfig.RESTOptionsGetter, c.ExtraConfig.NetworkSharedInformerFactory))
 	v1alpha1storage["iplocks"] = networkregistry.RESTInPeace(iplockstorage.NewREST(Scheme, c.GenericConfig.RESTOptionsGetter))
 	apiGroupInfo.VersionedResourcesStorageMap["v1alpha1"] = v1alpha1storage
 
