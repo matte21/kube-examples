@@ -17,7 +17,7 @@ spec:
       containers:
       - name: apiserver
         image: DOCKER_PREFIX/kos-network-apiserver:latest
-        imagePullPolicy: IfNotPresent
+        imagePullPolicy: Always
         command:
         - /network-apiserver
         - --etcd-servers=http://localhost:2379
