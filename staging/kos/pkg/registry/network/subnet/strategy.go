@@ -224,6 +224,10 @@ func (s *subnetStrategy) checkCIDRDoesNotOverlap(thisSubnet *network.Subnet, all
 	thisSubnetParsed := parseSubnet(thisSubnet)
 
 	for _, aSubnet := range allSubnetsWithSameVNI {
+		if thisSubnet.UID == aSubnet.UID {
+			// Do not compare the subnet under validation against itself (needed in case of updates)
+			continue
+		}
 		// No need to check if parse was successuful, as aSubnet has already been created. If it couldn't
 		// be parsed its creation would have failed
 		aSubnetParsed := parseSubnet(aSubnet)
