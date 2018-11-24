@@ -8,12 +8,13 @@ build:: build-ipam-controller
 
 clean:
 	rm -f images/*/*r
+	rm -f images/*/*/*r
 
 build-network-apiserver:
 	CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -a -o images/network-apiserver/network-apiserver k8s.io/examples/staging/kos/cmd/network-apiserver
 
 build-ipam-controller:
-	CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -a -o images/ipam-controller/ipam-controller k8s.io/examples/staging/kos/cmd/ipam-controller
+	CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -a -o images/controllers/ipam/ipam-controller k8s.io/examples/staging/kos/cmd/controllers/ipam
 
 publish-network-apiserver:
 	m4 -DDOCKER_PREFIX=${DOCKER_PREFIX} deploy.m4/50-rs-xs.yaml.m4 > deploy/50-rs-xs.yaml
@@ -21,7 +22,7 @@ publish-network-apiserver:
 
 publish-ipam-controller:
 	m4 -DDOCKER_PREFIX=${DOCKER_PREFIX} deploy.m4/50-rs-ipam.yaml.m4 > deploy/50-rs-ipam.yaml
-	cd images/ipam-controller && docker build -t ${DOCKER_PREFIX}/kos-ipam-controller:latest . && docker push ${DOCKER_PREFIX}/kos-ipam-controller:latest
+	cd images/controllers/ipam && docker build -t ${DOCKER_PREFIX}/kos-ipam-controller:latest . && docker push ${DOCKER_PREFIX}/kos-ipam-controller:latest
 
 .PHONY: deploy
 deploy:
