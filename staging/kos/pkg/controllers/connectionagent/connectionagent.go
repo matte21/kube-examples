@@ -19,24 +19,23 @@ package connectionagent
 import (
 	"sync"
 
+	"github.com/golang/glog"
+
 	k8stypes "k8s.io/apimachinery/pkg/types"
 	k8scache "k8s.io/client-go/tools/cache"
 	k8sworkqueue "k8s.io/client-go/util/workqueue"
 
 	kosclientv1a1 "k8s.io/examples/staging/kos/pkg/client/clientset/versioned/typed/network/v1alpha1"
 	netv1a1lister "k8s.io/examples/staging/kos/pkg/client/listers/network/v1alpha1"
-	// TODO find a better name for this pkg or a better alias to import it
-	"k8s.io/examples/staging/kos/pkg/localifc"
+	netfabric "k8s.io/examples/staging/kos/pkg/networkfabric"
 )
 
 const (
-	// NetworkAttachments v1alpha1 fields names. Used to
-	// build isntances of fields.Selector and/or to update
-	// such fields in the corresponding NetworkAttachments
-	// objects.
-	attHostIPFieldName = "status.hostIP"
+	// NetworkAttachments in network.example.com/v1alpha1 fields
+	// names. Used to build instances of fields.Selector.
 	attNodeFieldName   = "spec.node"
 	attVNIFieldName    = "spec.vni"
+	attHostIPFieldName = "status.hostIP"
 	attIPFieldName     = "status.ipv4"
 	attIfcFieldName    = "status.ifcName"
 )
@@ -52,15 +51,15 @@ type vnState struct {
 	// remoteAttsLister is a lister on the NetworkAttachments that are
 	// both: (1) in the Virtual Network the vnState represents, (2) not
 	// on this node. Since a Virtual Network cannot span multiple k8s API
-	// namespaces, it's a NamespaceLister
+	// namespaces, it's a NamespaceLister.
 	remoteAttsLister *netv1a1lister.NetworkAttachmentNamespaceLister
 
-	nbrOfLocalAttsMutex sync.RWMutex
+	nbrOfLocalAttsMutex sync.Mutex
 
 	// nbrOfLocalAtts stores the number of NetworkAttachments that are both:
 	// (1) in the Virtual Network the vnState represents, (2) on this node.
 	// It can be accessed only after acquiring nbrOfLocalAttsMutex. Notice
-	// that the fact that we're using uint, which is represented with a finite
+	// that the fact that its type is uint, which is represented with a finite
 	// number of bits (32 or 64 on 32-bit and 64-bit architectures respectively),
 	// means that there's a limit to the number of local NetworkAttachments in
 	// the Virtual Network (2^32 -1 and 2^64 - 1 on 32-bit and 64-bit architectures
@@ -85,19 +84,20 @@ type netAttQueueRef struct {
 
 // TODO make the following comments more precise.
 // ConnectionAgent represents K8S controller which runs on every node of the cluster and
-// eagerly maintains the mapping between virtual IPs and physical IPs for every relevant
-// NetworkAttachment up-to-date. A NetworkAttachment is relevant for a connection agent
+// eagerly maintains up-to-date the mapping between virtual IPs and physical IPs for
+// every relevant NetworkAttachment. A NetworkAttachment is relevant for a connection agent
 // if: (1) it runs on the same node as the connection agent, or (2) it's part of a
-// Virtual Network where at least one NetworkAttachment for which (1) is true exists. To
-// achieve its goal, a Connection Agent receives notifications about relevant
+// Virtual Network where at least one NetworkAttachment for which (1) is true exists.
+// To achieve its goal, a Connection Agent receives notifications about relevant
 // NetworkAttachments from the K8s API server through Informers, and when necessary
-// creates/updates/deletes Network Interfaces through a low-level networking interface.
+// creates/updates/deletes Network Interfaces through a low-level network interface fabric.
 type ConnectionAgent struct {
-	hostIP        string
 	localNodeName string
+	hostIP        string
 	netIfc        kosclientv1a1.NetworkV1alpha1Interface
 	queue         k8sworkqueue.RateLimitingInterface
 	workers       int
+	netFabric     netfabric.Interface
 
 	localAttsInformer *k8scache.SharedInformer
 
@@ -105,31 +105,34 @@ type ConnectionAgent struct {
 	vniToVnState      map[uint32]*vnState
 
 	localIfcsMutex sync.Mutex
-	localIfcs      map[vniAndNsn]localifc.NetworkInterface
+	localIfcs      map[vniAndNsn]netfabric.NetworkInterface
 
 	remoteIfcsMutex sync.Mutex
-	remoteIfcs      map[vniAndNsn]localifc.NetworkInterface
+	remoteIfcs      map[vniAndNsn]netfabric.NetworkInterface
 }
 
-func NewConnectionAgent(hostIP string,
-	localNodeName string,
+func NewConnectionAgent(localNodeName string,
+	hostIP string,
 	netIfc kosclientv1a1.NetworkV1alpha1Interface,
 	queue k8sworkqueue.RateLimitingInterface,
-	workers int) *ConnectionAgent {
+	workers int,
+	netFabric netfabric.Interface) *ConnectionAgent {
 
 	return &ConnectionAgent{
-		hostIP:        hostIP,
 		localNodeName: localNodeName,
+		hostIP:        hostIP,
 		netIfc:        netIfc,
 		queue:         queue,
 		workers:       workers,
+		netFabric:     netFabric,
 		vniToVnState:  make(map[uint32]*vnState),
-		localIfcs:     make(map[vniAndNsn]localifc.NetworkInterface),
-		remoteIfcs:    make(map[vniAndNsn]localifc.NetworkInterface),
+		localIfcs:     make(map[vniAndNsn]netfabric.NetworkInterface),
+		remoteIfcs:    make(map[vniAndNsn]netfabric.NetworkInterface),
 	}
 }
 
 func (ctlr *ConnectionAgent) Run(stopCh <-chan struct{}) error {
 	// TODO implement
+	glog.Infoln("Invoked method Run() on connection agent")
 	return nil
 }

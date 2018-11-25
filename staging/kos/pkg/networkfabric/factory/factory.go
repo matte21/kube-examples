@@ -14,22 +14,28 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package localifc
+package networkfabric
 
 import (
-	"net"
+	"github.com/golang/glog"
+
+	netfabric "k8s.io/examples/staging/kos/pkg/networkfabric"
+	"k8s.io/examples/staging/kos/pkg/networkfabric/types/logger"
 )
 
-type Interface interface {
-	Create(NetworkInterface) error
-	Delete(NetworkInterface) error
-	List() ([]NetworkInterface, error)
-}
+const (
+	// TODO make logLvl settable from the outside (env variable, command line flag, etc...)
+	logLvl     = glog.Level(1)
+	loggerType = "logger"
+)
 
-type NetworkInterface struct {
-	Name     string
-	VNI      uint32
-	guestMAC net.HardwareAddr
-	guestIP  net.IP
-	hostIP   net.IP
+func NewNetFabricForType(netFabricType string) netfabric.Interface {
+	// TODO add openflow based fabric
+	switch netFabricType {
+	case loggerType:
+		return logger.NewLogger(logLvl)
+	default:
+		// Logger is the default fabric
+		return logger.NewLogger(logLvl)
+	}
 }

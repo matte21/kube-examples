@@ -14,24 +14,27 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package localifc
+package networkfabric
 
 import (
-	"fmt"
-	"sync"
+	"net"
 )
 
-var registryMutex sync.Mutex
+type Interface interface {
+	Type() string
+	CreateLocalIfc(NetworkInterface) error
+	DeleteLocalIfc(NetworkInterface) error
+	CreateRemoteIfc(NetworkInterface) error
+	DeleteRemoteIfc(NetworkInterface) error
+	// TODO consider having two separate List() methods for
+	// remote interfaces and local interfaces respectively.
+	List() ([]NetworkInterface, error)
+}
 
-var ifcs = make(map[string]Interface)
-
-func Register(name string, ifc Interface) error {
-	registryMutex.Lock()
-	defer func() { registryMutex.Unlock() }()
-	old := ifcs[name]
-	if old != nil && old != ifc {
-		return fmt.Errorf("Duplicate registration of local interface %q: %#+v and %#+v\n", name, old, ifc)
-	}
-	ifcs[name] = ifc
-	return nil
+type NetworkInterface struct {
+	Name     string
+	VNI      uint32
+	guestMAC net.HardwareAddr
+	guestIP  net.IP
+	hostIP   net.IP
 }
