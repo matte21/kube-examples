@@ -91,7 +91,7 @@ func main() {
 
 	// TODO Add possibility to set this field through command line option.
 	// No check on whether the environment var is set because the
-	// factory will fall back to a default implementation if not
+	// factory falls back to a default implementation if not.
 	netFabricType, _ := os.LookupEnv(netFabricTypeEnv)
 	netFabric := netfabricfactory.NewNetFabricForType(netFabricType)
 	glog.V(2).Infof("Using %s as the type for the network fabric\n", netFabric.Type())
@@ -99,11 +99,11 @@ func main() {
 	// TODO think whether the rate limiter parameters make sense
 	queue := workqueue.NewRateLimitingQueue(workqueue.NewItemExponentialFailureRateLimiter(200*time.Millisecond, 8*time.Hour))
 
-	ctlr := cactlr.NewConnectionAgent(localNodeName, hostIP, kcs.NetworkV1alpha1(), queue, workers, netFabric)
-	glog.V(2).Infoln("Created ConnectionAgent")
+	ca := cactlr.NewConnectionAgent(localNodeName, hostIP, kcs, queue, workers, netFabric)
+	glog.V(2).Infoln("Created Connection Agent")
 
 	stopCh := StopOnSignals()
-	err = ctlr.Run(stopCh)
+	err = ca.Run(stopCh)
 	if err != nil {
 		glog.Info(err)
 	}
