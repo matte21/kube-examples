@@ -18,7 +18,7 @@ package connectionagent
 
 import (
 	"fmt"
-	"net"
+	gonet "net"
 	"strings"
 	"sync"
 	"time"
@@ -389,12 +389,13 @@ func (ca *ConnectionAgent) processExistingLocalAtt(localAtt *netv1a1.NetworkAtta
 	var newIfc netfabric.NetworkInterface
 	if !ifcFound || ifcNeedsUpdate {
 		// Create a new interface
-		// TODO Add GuestMAC generation ASAP
 		// TODO could not think of a better way to generate a name. Think this through.
 		newIfc.Name = fmt.Sprintf("%d-%s/%s", localAtt.Spec.VNI, localAtt.Namespace, localAtt.Name)
 		newIfc.VNI = localAtt.Spec.VNI
-		newIfc.GuestIP = net.ParseIP(localAtt.Status.IPv4)
-		newIfc.HostIP = net.ParseIP(ca.hostIP)
+		newIfc.HostIP = gonet.ParseIP(ca.hostIP)
+		guestIP := gonet.ParseIP(localAtt.Status.IPv4)
+		newIfc.GuestIP = guestIP
+		newIfc.GuestMAC = generateMACAddr(localAtt.Spec.VNI, guestIP)
 		err1 = ca.netFabric.CreateLocalIfc(newIfc)
 		if err1 == nil {
 			ca.setLocalIfc(newIfc, ifcKey)
@@ -610,14 +611,14 @@ func (ca *ConnectionAgent) createOrUpdateRemoteAttIfc(remoteAtt *netv1a1.Network
 	}
 	if !ifcFound || ifcNeedsUpdate {
 		// create a new interface
-		// TODO Add GuestMAC generation ASAP
+		guestIP := gonet.ParseIP(remoteAtt.Status.IPv4)
 		newIfc := netfabric.NetworkInterface{
 			// TODO Could not think of a better way to generate a name. Think this through.
-			Name:    fmt.Sprintf("%d-%s/%s", remoteAtt.Spec.VNI, remoteAtt.Namespace, remoteAtt.Name),
-			VNI:     remoteAtt.Spec.VNI,
-			GuestIP: net.ParseIP(remoteAtt.Status.IPv4),
-			HostIP:  net.ParseIP(remoteAtt.Status.HostIP),
-		}
+			Name:     fmt.Sprintf("%d-%s/%s", remoteAtt.Spec.VNI, remoteAtt.Namespace, remoteAtt.Name),
+			VNI:      remoteAtt.Spec.VNI,
+			HostIP:   gonet.ParseIP(remoteAtt.Status.HostIP),
+			GuestIP:  guestIP,
+			GuestMAC: generateMACAddr(remoteAtt.Spec.VNI, guestIP)}
 		err := ca.netFabric.CreateRemoteIfc(newIfc)
 		if err == nil {
 			ca.setRemoteIfc(newIfc, ifcKey)
@@ -839,6 +840,11 @@ func fromAttToVNIAndNsn(att *netv1a1.NetworkAttachment) vniAndNsn {
 		att.Spec.VNI,
 		attNSN(att),
 	}
+}
+
+func generateMACAddr(vni uint32, guestIPv4 gonet.IP) gonet.HardwareAddr {
+	guestIPBytes := guestIPv4.To4()
+	return []byte{byte(vni >> 24), byte(vni >> 16), byte(vni >> 8), byte(vni), guestIPBytes[2], guestIPBytes[3]}
 }
 
 // peel removes the k8scache.DeletedFinalStateUnknown wrapper,
