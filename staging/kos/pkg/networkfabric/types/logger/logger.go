@@ -65,7 +65,7 @@ func (l *Logger) CreateRemoteIfc(ifc netfabric.NetworkInterface) error {
 
 func (l *Logger) DeleteRemoteIfc(ifc netfabric.NetworkInterface) error {
 	delete(l.ifcs, ifc.Name)
-	glog.V(l.logLvl).Infof("Deleted local interface %v\n", ifc)
+	glog.V(l.logLvl).Infof("Deleted remote interface %v\n", ifc)
 	return nil
 }
 
