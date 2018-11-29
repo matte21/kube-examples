@@ -96,7 +96,7 @@ type vnState struct {
 	// and vnState is removed from the map storing all the vnStates localAtts is used
 	// as a set where the elements are the keys, the map values can be ignored.
 	// TODO we should implement and use a set rather than a map for this
-	localAtts map[k8stypes.NamespacedName]interface{}
+	localAtts map[k8stypes.NamespacedName]struct{}
 }
 
 // vniAndNsn is used as the type for the keys in the maps
@@ -322,14 +322,15 @@ func (ca *ConnectionAgent) processLocalAtt(attRef attQueueRef) error {
 		// If we are here there's been an update on the vni field, and we must clear
 		// the resources associated with localAtt when it had the old vni field value.
 		err = ca.releaseLocalAttResources(attRef)
+		return err
 	}
 	err = ca.processExistingLocalAtt(localAtt)
 	return err
 }
 
 func (ca *ConnectionAgent) processRemoteAtt(attRef attQueueRef) error {
-	stateOfAttVN, stateFound := ca.getVNStateForVNI(attRef.vni)
 	ifcKey := fromAttRefToVNIAndNsn(attRef)
+	stateOfAttVN, stateFound := ca.getVNStateForVNI(attRef.vni)
 	if !stateFound {
 		// If we're here the last local NetworkAttachment in the Virtual Network of the remote attachment
 		// referenced by attRef has been deleted => the attachment by attRef is no longer relevant for
@@ -453,13 +454,13 @@ func (ca *ConnectionAgent) updateVNStateForExistingLocalAtt(localAtt *netv1a1.Ne
 			// The state for the Virtual Network localAtt is part of does not exist, so we create a new one
 			// and set it here without risk of race conditions because we hold the lock on ca.vniToVnStateMutex.
 			newVNState := &vnState{
-				localAtts: make(map[k8stypes.NamespacedName]interface{}, 1),
+				localAtts: make(map[k8stypes.NamespacedName]struct{}, 1),
 			}
 			ca.vniToVnState[vni] = newVNState
 			newVNState.mutex.Lock()
 			ca.vniToVnStateMutex.Unlock()
 			// Add localAtts amongst the attachments in the Virtual Network state.
-			newVNState.localAtts[nsn] = nil
+			newVNState.localAtts[nsn] = struct{}{}
 			ca.initRemoteAttsInformerAndLister(newVNState, nsn, vni)
 			ca.startRemoteAttsInformer(newVNState)
 			newVNState.mutex.Unlock()
@@ -472,7 +473,7 @@ func (ca *ConnectionAgent) updateVNStateForExistingLocalAtt(localAtt *netv1a1.Ne
 			// while holding the lock on ca.vniToVnStateMutex which is acquired by every worker for every notification.
 			// It's a bottleneck, at some point we'll need to address this.
 			state.mutex.Lock()
-			state.localAtts[nsn] = nil
+			state.localAtts[nsn] = struct{}{}
 			state.mutex.Unlock()
 			ca.vniToVnStateMutex.Unlock()
 			glog.V(5).Infof("Added local NetworkAttachment %s to Virtual Network with ID %d state", nsn, vni)
