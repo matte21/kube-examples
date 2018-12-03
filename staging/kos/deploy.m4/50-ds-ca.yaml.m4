@@ -27,8 +27,9 @@ spec:
           valueFrom:
             fieldRef:
               fieldPath: status.hostIP
-        - name: NET_FABRIC_TYPE
-          value: "logger"
         command:
         - /ca-controller
         - -v=5
+        - -nodename=$(NODE_NAME)
+        - -hostip=$(HOST_IP)
+        - -netfabric="logger"
