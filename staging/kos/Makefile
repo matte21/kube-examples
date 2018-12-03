@@ -2,15 +2,15 @@ DOCKER_PREFIX=${LOGNAME}
 
 publish:: publish-network-apiserver
 publish:: publish-ipam-controller
-publish:: publish-ca-controller
+publish:: publish-connection-agent
 
 build:: build-network-apiserver
 build:: build-ipam-controller
-build:: build-ca-controller
+build:: build-connection-agent
 
 clean:
 	rm -f images/*/*r
-	rm -f images/*/*/*r
+	rm -f images/*/*/*[rt]
 
 build-network-apiserver:
 	CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -a -o images/network-apiserver/network-apiserver k8s.io/examples/staging/kos/cmd/network-apiserver
@@ -18,8 +18,8 @@ build-network-apiserver:
 build-ipam-controller:
 	CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -a -o images/controllers/ipam/ipam-controller k8s.io/examples/staging/kos/cmd/controllers/ipam
 
-build-ca-controller:
-	CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -a -o images/controllers/connectionagent/ca-controller k8s.io/examples/staging/kos/cmd/controllers/connectionagent
+build-connection-agent:
+	CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -a -o images/controllers/connectionagent/connection-agent k8s.io/examples/staging/kos/cmd/controllers/connectionagent
 
 publish-network-apiserver:
 	m4 -DDOCKER_PREFIX=${DOCKER_PREFIX} deploy.m4/50-rs-xs.yaml.m4 > deploy/50-rs-xs.yaml
@@ -29,9 +29,9 @@ publish-ipam-controller:
 	m4 -DDOCKER_PREFIX=${DOCKER_PREFIX} deploy.m4/50-rs-ipam.yaml.m4 > deploy/50-rs-ipam.yaml
 	cd images/controllers/ipam && docker build -t ${DOCKER_PREFIX}/kos-ipam-controller:latest . && docker push ${DOCKER_PREFIX}/kos-ipam-controller:latest
 
-publish-ca-controller:
+publish-connection-agent:
 	m4 -DDOCKER_PREFIX=${DOCKER_PREFIX} deploy.m4/50-ds-ca.yaml.m4 > deploy/50-ds-ca.yaml
-	cd images/controllers/connectionagent && docker build -t ${DOCKER_PREFIX}/kos-ca-controller:latest . && docker push ${DOCKER_PREFIX}/kos-ca-controller:latest
+	cd images/controllers/connectionagent && docker build -t ${DOCKER_PREFIX}/kos-connection-agent:latest . && docker push ${DOCKER_PREFIX}/kos-connection-agent:latest
 
 .PHONY: deploy
 deploy:

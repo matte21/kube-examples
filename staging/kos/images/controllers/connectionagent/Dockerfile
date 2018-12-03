@@ -13,5 +13,5 @@
 # limitations under the License.
 
 FROM ubuntu:16.04
-ADD ca-controller /
-ENTRYPOINT ["/ca-controller"]
+ADD connection-agent /
+ENTRYPOINT ["/connection-agent"]

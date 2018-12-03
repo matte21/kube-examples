@@ -13,5 +13,5 @@ metadata:
 kind: ServiceAccount
 apiVersion: v1
 metadata:
-  name: ca-controller
+  name: connection-agent
   namespace: example-com

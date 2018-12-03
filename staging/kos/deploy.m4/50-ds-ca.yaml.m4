@@ -1,22 +1,22 @@
 apiVersion: apps/v1
 kind: DaemonSet
 metadata:
-  name: ca-controller
+  name: connection-agent
   namespace: example-com
 spec:
   selector:
     matchLabels:
-      ca-controller: "true"
+      connection-agent: "true"
   template:
     metadata:
       labels:
-        ca-controller: "true"
+        connection-agent: "true"
     spec:
-      serviceAccountName: ca-controller
+      serviceAccountName: connection-agent
       hostNetwork: true
       containers:
-      - name: ca-controller
-        image: DOCKER_PREFIX/kos-ca-controller:latest
+      - name: connection-agent
+        image: DOCKER_PREFIX/kos-connection-agent:latest
         imagePullPolicy: Always
         env:
         - name: NODE_NAME
@@ -28,7 +28,7 @@ spec:
             fieldRef:
               fieldPath: status.hostIP
         command:
-        - /ca-controller
+        - /connection-agent
         - -v=5
         - -nodename=$(NODE_NAME)
         - -hostip=$(HOST_IP)
