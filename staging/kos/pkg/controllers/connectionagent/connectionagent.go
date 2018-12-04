@@ -49,9 +49,10 @@ const (
 	// NetworkAttachments in network.example.com/v1alpha1
 	// fields names. Used to build field selectors.
 	attNodeFieldName   = "spec.node"
-	attVNIFieldName    = "spec.vni"
-	attHostIPFieldName = "status.hostIP"
 	attIPFieldName     = "status.ipv4"
+	attHostIPFieldName = "status.hostIP"
+	attIfcFieldName    = "status.ifcName"
+	attVNIFieldName    = "spec.vni"
 
 	// fields selector comparison operators.
 	// Used to build fields selectors.
@@ -62,9 +63,9 @@ const (
 	// to 0 because we don't want resyncs.
 	resyncPeriod = 0
 
-	// names of indexers
-	attachmentIfcNameIdxName = "ifcName"
-	attachmentVNIIdxName     = "vni"
+	// names of indexer which returns the
+	// status.ifcName of an attachment.
+	attachmentIfcIdxName = "ifcName"
 )
 
 // vnState stores all the state needed for a Virtual Network for
@@ -79,7 +80,7 @@ type vnState struct {
 	// this node. It is stopped when the last local NetworkAttachment in the
 	// Virtual Network associated with the vnState instance is deleted. To
 	// stop it, remoteAttsInformerStopCh must be closed.
-	remoteAttsInformer       k8scache.SharedInformer
+	remoteAttsInformer       k8scache.SharedIndexInformer
 	remoteAttsInformerStopCh chan struct{}
 
 	// remoteAttsLister is a lister on the NetworkAttachments that are
@@ -96,7 +97,6 @@ type vnState struct {
 	// the case remoteAttsInformer is stopped by closing remoteAttsInformerStopCh,
 	// and vnState is removed from the map storing all the vnStates localAtts is used
 	// as a set where the elements are the keys, the map values can be ignored.
-	// TODO we should implement and use a set rather than a map for this
 	localAtts map[k8stypes.NamespacedName]struct{}
 }
 
@@ -196,18 +196,16 @@ func (ca *ConnectionAgent) Run(stopCh <-chan struct{}) error {
 	}
 	glog.V(2).Infoln("Local NetworkAttachments cache synced")
 
-	// Delete interfaces associated with local NetworkAttachments
-	// which have been deleted while the Connection Agent was not
-	// running.
-	err = ca.deleteDanglingLocalIfcs()
+	err = ca.handleExistingLocalIfcs()
 	if err != nil {
-		// ? In some cases it might make sense to keep running
-		// ? regardless of this error. Think this through.
 		return err
 	}
-
-	// TODO start remote informers (all or only those which might lead to a deletion?)
-	// TODO delete remote interfaces
+	glog.V(2).Infoln("Processed pre-existing local attachments network interfaces")
+	err = ca.handleExistingRemoteIfcs()
+	if err != nil {
+		return err
+	}
+	glog.V(2).Infoln("Processed pre-existing remote attachments network interfaces")
 
 	for i := 0; i < ca.workers; i++ {
 		go k8swait.Until(ca.processQueue, time.Second, stopCh)
@@ -227,8 +225,7 @@ func (ca *ConnectionAgent) initLocalAttsInformerAndLister() {
 		fromFieldsSelectorToTweakListOptionsFunc(localAttWithAnIPSelector))
 
 	ca.localAttsInformer.AddIndexers(map[string]k8scache.IndexFunc{
-		attachmentIfcNameIdxName: attachmentIfcName,
-		attachmentVNIIdxName:     attachmentVNI})
+		attachmentIfcIdxName: attachmentIfcName})
 	ca.localAttsInformer.AddEventHandler(k8scache.ResourceEventHandlerFuncs{
 		AddFunc:    ca.onLocalAttAdded,
 		UpdateFunc: ca.onLocalAttUpdated,
@@ -246,36 +243,114 @@ func (ca *ConnectionAgent) waitForLocalAttsCacheSync(stopCh <-chan struct{}) (er
 	return
 }
 
-func (ca *ConnectionAgent) deleteDanglingLocalIfcs() error {
+func (ca *ConnectionAgent) handleExistingLocalIfcs() error {
 	// Retrieve all local interfaces implemented
 	// by the network interface fabric.
 	allLocalIfcs, err := ca.netFabric.ListLocalIfcs()
 	if err != nil {
-		return err
+		return fmt.Errorf("network fabric failed to list all local interfaces: %s", err.Error())
 	}
 
-	// Retrieve the names of all the interaces owned by the local attachments in the local
-	// attachments cache and store such names as keys in a map to ease lookup by name.
-	ifcsBoundToLocalAttsSlice := ca.localAttsInformer.GetIndexer().ListIndexFuncValues(attachmentIfcNameIdxName)
-	ifcsBoundToLocalAttsMap := make(map[string]struct{}, len(ifcsBoundToLocalAttsSlice))
-	for _, ifcName := range ifcsBoundToLocalAttsSlice {
-		ifcsBoundToLocalAttsMap[ifcName] = struct{}{}
-	}
-
-	// For every local interface implemented by the network fabric, check if a local attachment
-	// owning it exists by looking into ifcsBoundToLocalAttsMap. If it's a miss, the attachment
-	// associated with the interface has been deleted while the connection agent was not running,
-	// hence we delete the interface.
-	errs := make([]error, 0)
-	for _, localIfc := range allLocalIfcs {
-		_, ifcFound := ifcsBoundToLocalAttsMap[localIfc.Name]
-		if !ifcFound {
-			err = ca.netFabric.DeleteLocalIfc(localIfc)
-			errs = append(errs, err)
+	// For every interface, check if an attachment which owns it and whose fields
+	// are still in sync with those of the Interface is found
+	indexer := ca.localAttsInformer.GetIndexer()
+	netFabric := ca.netFabric
+	for _, aLocalIfc := range allLocalIfcs {
+		ifcOwnerAtts, err := indexer.ByIndex(attachmentIfcIdxName, aLocalIfc.Name)
+		if err != nil {
+			return fmt.Errorf("indexer based on interface name failed: %s", err.Error())
 		}
+		if len(ifcOwnerAtts) == 0 {
+			// If we are here the attachment associated with aLocalIfc has been deleted
+			// while the connection agent was not running, hence we delete aLocalIfc.
+			err = netFabric.DeleteLocalIfc(aLocalIfc)
+			if err != nil {
+				return fmt.Errorf("could not delete local Ifc %s: %s", aLocalIfc.Name, err.Error())
+			}
+			continue
+		}
+		ifcOwnerAtt := ifcOwnerAtts[0].(*netv1a1.NetworkAttachment)
+		if ifcOwnerAtt.Spec.VNI != aLocalIfc.VNI {
+			// If we are here the VNI of the attachment owning aLocalIfc has been updated
+			// while the connection agent was not running, hence we delete aLocalIfc (a
+			// new Ifc for the attachment with the up-to-date value of the VNI will be created
+			// when processing the attachment after starting the workers).
+			err = netFabric.DeleteLocalIfc(aLocalIfc)
+			if err != nil {
+				return fmt.Errorf("could not delete local Ifc %s: %s", aLocalIfc.Name, err.Error())
+			}
+			continue
+		}
+		// If we are here the interface is still valid: there's a local attachment which
+		// owns it and whose fields are up-to-date with those in the interface. We add
+		// aLocalIfc to the map ca.localIfcs, which associates it with owner's vni and
+		// namespaced name. Notice that this map is usually accessed through a mutex,
+		// but here the current goroutine is the only one running to there's no need for
+		// that.
+		ca.localIfcs[fromAttToVNIAndNsn(ifcOwnerAtt)] = aLocalIfc
+
+		// We invoke updateVNStateForExistingLocalAtt eagerly on ifcOwnerAtt instead of waiting for
+		// its reference to be dequeued and processed by a worker. The reason is that this
+		// way the Infomer on remote attachments in the same VNI as ifcOwnerAtt is started.
+		// We might need that informer to decide whether a remote Interface should be deleted
+		// or not.
+		// We are using updateVNStateForExistingLocalAtt because it does everything we need and was already
+		// there. But it does more than we need. For instance, it does a lot of locking/unlocking
+		// because it is used both here by a single thread and by the worker goroutines after they are
+		// started, but here we don't need locking. TODO: replace this invocation with that of a "custom method"
+		// with no locking which does only what we need. TODO: write such method.
+		ca.updateVNStateForExistingLocalAtt(ifcOwnerAtt)
 	}
-	_, err = aggregateErrors(",", errs...)
-	return err
+
+	return nil
+}
+
+func (ca *ConnectionAgent) handleExistingRemoteIfcs() error {
+	// Retrieve all remote interfaces implemented
+	// by the network interface fabric.
+	allRemoteIfcs, err := ca.netFabric.ListRemoteIfcs()
+	if err != nil {
+		return fmt.Errorf("network fabric failed to list all remote interfaces: %s", err.Error())
+	}
+
+	netFabric := ca.netFabric
+	for _, aRemoteIfc := range allRemoteIfcs {
+		stateOfIfcVN, stateFound := ca.vniToVnState[aRemoteIfc.VNI]
+		if !stateFound {
+			// If we are here the state for the virtual network with ID aRemoteIfc.VNI has not
+			// been found, which means there are no Local Attachments with that VNI, hence
+			// aRemoteIfc is no longer relevant and is deleted.
+			err = netFabric.DeleteRemoteIfc(aRemoteIfc)
+			if err != nil {
+				return fmt.Errorf("could not delete remote Ifc %s: %s", aRemoteIfc.Name, err.Error())
+			}
+			continue
+		}
+		remoteAttsInformer := stateOfIfcVN.remoteAttsInformer
+		if !remoteAttsInformer.HasSynced() {
+			// We'll need to lookup an attachment into the informer cache, thus we want it to be synced. Not doing that does
+			// not compromise correctness but efficiency and user experience, because if the lookup results in a miss an interface
+			// which should be kept is deleted, but it's recreated as soon as the attachment associated with the interface is processed.
+			k8scache.WaitForCacheSync(stateOfIfcVN.remoteAttsInformerStopCh, remoteAttsInformer.HasSynced)
+		}
+		ifcOwnerAtts, err := remoteAttsInformer.GetIndexer().ByIndex(attachmentIfcIdxName, aRemoteIfc.Name)
+		if err != nil {
+			return fmt.Errorf("indexer based on interface name failed: %s", err.Error())
+		}
+		if len(ifcOwnerAtts) == 0 {
+			// If we are here the attachment associated with aRemoteIfc has been deleted
+			// while the connection agent was not running, hence we delete aRemoteIfc.
+			err = netFabric.DeleteRemoteIfc(aRemoteIfc)
+			if err != nil {
+				return fmt.Errorf("could not delete local Ifc %s: %s", aRemoteIfc.Name, err.Error())
+			}
+			continue
+		}
+		ifcOwnerAtt := ifcOwnerAtts[0].(*netv1a1.NetworkAttachment)
+		ca.remoteIfcs[fromAttToVNIAndNsn(ifcOwnerAtt)] = aRemoteIfc
+	}
+
+	return nil
 }
 
 func (ca *ConnectionAgent) processQueue() {
@@ -566,7 +641,9 @@ func (ca *ConnectionAgent) initRemoteAttsInformerAndLister(state *vnState, nsn k
 	state.remoteAttsInformer, state.remoteAttsLister = v1a1AttsCustomNamespaceInformerAndLister(ca.kcs,
 		resyncPeriod,
 		nsn.Namespace,
-		fromFieldsSelectorToTweakListOptionsFunc(ca.remoteAttInVNWithVirtualIPAndHostIPSelector(vni)))
+		fromFieldsSelectorToTweakListOptionsFunc(ca.remoteAttInVNWithVirtualIPHostIPAndIfcSelector(vni)))
+	state.remoteAttsInformer.AddIndexers(k8scache.Indexers{
+		attachmentIfcIdxName: attachmentIfcName})
 	state.remoteAttsInformer.AddEventHandler(k8scache.ResourceEventHandlerFuncs{
 		AddFunc:    ca.onRemoteAttAdded,
 		UpdateFunc: ca.onRemoteAttUpdated,
@@ -661,8 +738,7 @@ func (ca *ConnectionAgent) createOrUpdateRemoteAttIfc(remoteAtt *netv1a1.Network
 		// create a new interface
 		guestIP := gonet.ParseIP(remoteAtt.Status.IPv4)
 		newIfc := netfabric.NetworkInterface{
-			// TODO Could not think of a better way to generate a name. Think this through.
-			Name:     fmt.Sprintf("%d-%s/%s", remoteAtt.Spec.VNI, remoteAtt.Namespace, remoteAtt.Name),
+			Name:     remoteAtt.Status.IfcName,
 			VNI:      remoteAtt.Spec.VNI,
 			HostIP:   gonet.ParseIP(remoteAtt.Status.HostIP),
 			GuestIP:  guestIP,
@@ -784,38 +860,32 @@ func (ca *ConnectionAgent) localAttWithAnIPSelector() string {
 	// Build a selector which is a logical AND between
 	// attWithAnIPSelectorString and localAttSelectorString.
 	allSelectors := []string{localAttSelector, attWithAnIPSelector}
-	localAttWithAnIPSelector := strings.Join(allSelectors, ",")
-
-	return localAttWithAnIPSelector
+	return strings.Join(allSelectors, ",")
 }
 
 // Return a string representing a field selector that matches NetworkAttachments
 // that run on a remote node on the Virtual Network identified by the given VNI and
 // have a virtual IP and the host IP field set.
-func (ca *ConnectionAgent) remoteAttInVNWithVirtualIPAndHostIPSelector(vni uint32) string {
+func (ca *ConnectionAgent) remoteAttInVNWithVirtualIPHostIPAndIfcSelector(vni uint32) string {
 	// remoteAttSelector expresses the constraint that the NetworkAttachment runs on a remote node.
 	remoteAttSelector := attNodeFieldName + notEqual + ca.localNodeName
 
-	// attWithAnIPSelector expresses the constraint that the NetworkAttachment has a virtual IP
-	// by saying that the field containig the virtual IP must not be equal to the empty string.
+	// attWithAnIPSelector, attWithHostIPSelector and  attWithIfcSelector express the constraints that the
+	// NetworkAttachment has the fields storing virtual IP, host IP and ifc name sets, by saying that such
+	// fields must not be equal to the empty string.
 	attWithAnIPSelector := attIPFieldName + notEqual
+	attWithHostIPSelector := attHostIPFieldName + notEqual
+	attWithIfcSelector := attIfcFieldName + notEqual
 
-	// attWithHostIPSet expresses the constraint that the NetworkAttachment has the host IP field
-	// set by saying that the field containig the host IP must not be equal to the empty string.
-	attWithHostIPSet := attHostIPFieldName + notEqual
-
-	// attInSpecificVN expresses the constraint that the NetworkAttachment is in the Virtual
+	// attInSpecificVNSelctor expresses the constraint that the NetworkAttachment is in the Virtual
 	// Network identified by vni.
-	attInSpecificVN := attVNIFieldName + equal + fmt.Sprint(vni)
+	attInSpecificVNSelctor := attVNIFieldName + equal + fmt.Sprint(vni)
 
-	// Build a selector which is a logical AND between all the selectors defined above.
-	allSelectors := []string{remoteAttSelector, attWithAnIPSelector, attWithHostIPSet, attInSpecificVN}
-	localAttWithAnIPSelector := strings.Join(allSelectors, ",")
-
-	return localAttWithAnIPSelector
+	// Build and return a selector which is a logical AND between all the selectors defined above.
+	allSelectors := []string{remoteAttSelector, attWithAnIPSelector, attWithHostIPSelector, attWithIfcSelector, attInSpecificVNSelctor}
+	return strings.Join(allSelectors, ",")
 }
 
-// TODO add comments
 func fromFieldsSelectorToTweakListOptionsFunc(customFieldSelector string) kosinternalifcs.TweakListOptionsFunc {
 	return func(options *k8smetav1.ListOptions) {
 		// TODO if a selector is both in options.FieldSelector and customFieldsSelector it appears twice in the
@@ -839,14 +909,6 @@ func attachmentIfcName(obj interface{}) ([]string, error) {
 	return []string{att.Status.IfcName}, nil
 }
 
-// attachmentVNI is an Index function that returns
-// the spec.VNI of a NetworkAttachment.
-func attachmentVNI(obj interface{}) ([]string, error) {
-	att := obj.(*netv1a1.NetworkAttachment)
-	return []string{fmt.Sprint(att.Spec.VNI)}, nil
-}
-
-// TODO add comments
 func v1a1AttsCustomInformerAndLister(kcs *kosclientset.Clientset,
 	resyncPeriod time.Duration,
 	tweakListOptionsFunc kosinternalifcs.TweakListOptionsFunc) (k8scache.SharedIndexInformer, koslisterv1a1.NetworkAttachmentLister) {
@@ -858,7 +920,6 @@ func v1a1AttsCustomInformerAndLister(kcs *kosclientset.Clientset,
 	return attv1a1Informer.Informer(), attv1a1Informer.Lister()
 }
 
-// TODO add comments
 func v1a1AttsCustomNamespaceInformerAndLister(kcs *kosclientset.Clientset,
 	resyncPeriod time.Duration,
 	namespace string,
@@ -871,7 +932,6 @@ func v1a1AttsCustomNamespaceInformerAndLister(kcs *kosclientset.Clientset,
 	return attv1a1Informer.Informer(), attv1a1Informer.Lister().NetworkAttachments(namespace)
 }
 
-// TODO add comments
 func createAttsv1a1Informer(kcs *kosclientset.Clientset,
 	resyncPeriod time.Duration,
 	namespace string,
@@ -885,6 +945,8 @@ func createAttsv1a1Informer(kcs *kosclientset.Clientset,
 	return netv1a1Ifc.NetworkAttachments()
 }
 
+// TODO factor out attNSN in pkg controller/utils, as it is used both by
+// the connection agent and the IPAM controller.
 func attNSN(netAtt *netv1a1.NetworkAttachment) k8stypes.NamespacedName {
 	return k8stypes.NamespacedName{Namespace: netAtt.Namespace,
 		Name: netAtt.Name}
@@ -909,8 +971,8 @@ func generateMACAddr(vni uint32, guestIPv4 gonet.IP) gonet.HardwareAddr {
 	return []byte{byte(vni >> 24), byte(vni >> 16), byte(vni >> 8), byte(vni), guestIPBytes[2], guestIPBytes[3]}
 }
 
-// peel removes the k8scache.DeletedFinalStateUnknown wrapper,
-// if any, and returns the result as a k8sruntime.Object.
+// TODO factor out peel in pkg controller/utils, as it is used both by
+// the connection agent and the IPAM controller.
 func peel(obj interface{}) k8sruntime.Object {
 	switch o := obj.(type) {
 	case *k8scache.DeletedFinalStateUnknown:

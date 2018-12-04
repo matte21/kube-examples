@@ -61,11 +61,12 @@ func MatchNetworkAttachment(label labels.Selector, field fields.Selector) storag
 func SelectableFields(obj *network.NetworkAttachment) fields.Set {
 	return generic.AddObjectMetaFieldsSet(
 		fields.Set{
-			"spec.node":     obj.Spec.Node,
-			"spec.subnet":   obj.Spec.Subnet,
-			"spec.vni":      fmt.Sprint(obj.Spec.VNI),
-			"status.ipv4":   obj.Status.IPv4,
-			"status.hostIP": obj.Status.HostIP,
+			"spec.node":      obj.Spec.Node,
+			"spec.subnet":    obj.Spec.Subnet,
+			"spec.vni":       fmt.Sprint(obj.Spec.VNI),
+			"status.ipv4":    obj.Status.IPv4,
+			"status.hostIP":  obj.Status.HostIP,
+			"status.ifcName": obj.Status.IfcName,
 		},
 		&obj.ObjectMeta, true)
 }
