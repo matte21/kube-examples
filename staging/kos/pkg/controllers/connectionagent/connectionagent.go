@@ -63,7 +63,7 @@ const (
 	// to 0 because we don't want resyncs.
 	resyncPeriod = 0
 
-	// names of indexer which returns the
+	// name of indexer which returns the
 	// status.ifcName of an attachment.
 	attachmentIfcIdxName = "ifcName"
 )
@@ -243,6 +243,21 @@ func (ca *ConnectionAgent) waitForLocalAttsCacheSync(stopCh <-chan struct{}) (er
 	return
 }
 
+// handleExistingLocalIfcs uses the network fabric to retrieve
+// all the existing local attachments interfaces. For each interface
+// it does one between (1) or (2). (1) Delete the interface if the
+// owning attachment has been deleted while the connection agent was
+// not running, or its vni has changed. (2) If the attachment owning
+// the interface has not been deleted and its vni has not changed,
+// the interface is added to the connection agent map localIfcs, and
+// the namespaced name of the owning attachment is added to the local
+// attachments in the Virtual Network state for the interface VNI. If
+// such state is missing, it is initialized. This entails starting an
+// Informer on remote attachments in the same virtual Network. The informer
+// is started eagerly here instead of waiting when the first local attachment
+// in the virtual network of the interface is processed by a worker goroutine
+// because we might need to look into that informer cache when handling
+// existing remote interfaces, and we want to do that before starting the workers.
 func (ca *ConnectionAgent) handleExistingLocalIfcs() error {
 	// Retrieve all local interfaces implemented
 	// by the network interface fabric.
@@ -251,8 +266,8 @@ func (ca *ConnectionAgent) handleExistingLocalIfcs() error {
 		return fmt.Errorf("network fabric failed to list all local interfaces: %s", err.Error())
 	}
 
-	// For every interface, check if an attachment which owns it and whose fields
-	// are still in sync with those of the Interface is found
+	// For every interface, check if an attachment which owns it and whose
+	// vni is still in sync with that of the Interface is found
 	indexer := ca.localAttsInformer.GetIndexer()
 	netFabric := ca.netFabric
 	for _, aLocalIfc := range allLocalIfcs {
@@ -265,6 +280,8 @@ func (ca *ConnectionAgent) handleExistingLocalIfcs() error {
 			// while the connection agent was not running, hence we delete aLocalIfc.
 			err = netFabric.DeleteLocalIfc(aLocalIfc)
 			if err != nil {
+				// ? Consider logging instead of returning an error: if out of 1k interfaces
+				// ? one could not be deleted we might want to keep running
 				return fmt.Errorf("could not delete local Ifc %s: %s", aLocalIfc.Name, err.Error())
 			}
 			continue
@@ -277,16 +294,20 @@ func (ca *ConnectionAgent) handleExistingLocalIfcs() error {
 			// when processing the attachment after starting the workers).
 			err = netFabric.DeleteLocalIfc(aLocalIfc)
 			if err != nil {
+				// ? Consider logging instead of returning an error: if out of 1k interfaces
+				// ? one could not be deleted we might want to keep running
 				return fmt.Errorf("could not delete local Ifc %s: %s", aLocalIfc.Name, err.Error())
 			}
 			continue
 		}
 		// If we are here the interface is still valid: there's a local attachment which
-		// owns it and whose fields are up-to-date with those in the interface. We add
+		// owns it and whose vni is up-to-date with that in the interface. We add
 		// aLocalIfc to the map ca.localIfcs, which associates it with owner's vni and
-		// namespaced name. Notice that this map is usually accessed through a mutex,
-		// but here the current goroutine is the only one running to there's no need for
-		// that.
+		// namespaced name. The reason is that when processing an existing local attachment,
+		// the worker will first look for pre-existing interfaces on ca.localIfcs, and create
+		// a brand new interface if it's a miss. Notice that this map is usually accessed
+		// through a mutex, but here the current goroutine is the only one running so there's
+		// no need for that.
 		ca.localIfcs[fromAttToVNIAndNsn(ifcOwnerAtt)] = aLocalIfc
 
 		// We invoke updateVNStateForExistingLocalAtt eagerly on ifcOwnerAtt instead of waiting for
@@ -297,7 +318,7 @@ func (ca *ConnectionAgent) handleExistingLocalIfcs() error {
 		// We are using updateVNStateForExistingLocalAtt because it does everything we need and was already
 		// there. But it does more than we need. For instance, it does a lot of locking/unlocking
 		// because it is used both here by a single thread and by the worker goroutines after they are
-		// started, but here we don't need locking. TODO: replace this invocation with that of a "custom method"
+		// started, but here we don't need locking. TODO: replace this invocation with that of a custom method
 		// with no locking which does only what we need. TODO: write such method.
 		ca.updateVNStateForExistingLocalAtt(ifcOwnerAtt)
 	}
@@ -305,6 +326,16 @@ func (ca *ConnectionAgent) handleExistingLocalIfcs() error {
 	return nil
 }
 
+// handleExistingRemoteIfcs uses the network fabric to retrieve
+// all the existing remote attachments interfaces. For each interface
+// it does one between (1) or (2). (1) Deletes the interface if the
+// owning attachment has been deleted while the connection agent was
+// not running, or the last local attachment with the same VNI has been
+// deleted while the connection agent was not running. (2) If the attachment
+// owning the interface has been deleted, add the interface to the connection
+// agent map remoteIfcs. This prevents the worker processing the owner attachment
+// from creating a new interface for the attachment even if the pre-existing one
+// is still valid.
 func (ca *ConnectionAgent) handleExistingRemoteIfcs() error {
 	// Retrieve all remote interfaces implemented
 	// by the network interface fabric.
@@ -318,10 +349,13 @@ func (ca *ConnectionAgent) handleExistingRemoteIfcs() error {
 		stateOfIfcVN, stateFound := ca.vniToVnState[aRemoteIfc.VNI]
 		if !stateFound {
 			// If we are here the state for the virtual network with ID aRemoteIfc.VNI has not
-			// been found, which means there are no Local Attachments with that VNI, hence
-			// aRemoteIfc is no longer relevant and is deleted.
+			// been found, which means that we cannot tell whether the interface should be kept
+			// or not, hence we delete it. If it's needed, it will be re-created shortly after
+			// starting the worker threads.
 			err = netFabric.DeleteRemoteIfc(aRemoteIfc)
 			if err != nil {
+				// ? Consider logging instead of returning an error: if out of 1k interfaces
+				// ? one could not be deleted we might want to keep running
 				return fmt.Errorf("could not delete remote Ifc %s: %s", aRemoteIfc.Name, err.Error())
 			}
 			continue
@@ -342,6 +376,8 @@ func (ca *ConnectionAgent) handleExistingRemoteIfcs() error {
 			// while the connection agent was not running, hence we delete aRemoteIfc.
 			err = netFabric.DeleteRemoteIfc(aRemoteIfc)
 			if err != nil {
+				// ? Consider logging instead of returning an error: if out of 1k interfaces
+				// ? one could not be deleted we might want to keep running
 				return fmt.Errorf("could not delete local Ifc %s: %s", aRemoteIfc.Name, err.Error())
 			}
 			continue
