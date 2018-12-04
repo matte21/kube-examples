@@ -26,9 +26,8 @@ type Interface interface {
 	DeleteLocalIfc(NetworkInterface) error
 	CreateRemoteIfc(NetworkInterface) error
 	DeleteRemoteIfc(NetworkInterface) error
-	// TODO consider having two separate List() methods for
-	// remote interfaces and local interfaces respectively.
-	List() ([]NetworkInterface, error)
+	ListLocalIfcs() ([]NetworkInterface, error)
+	ListRemoteIfcs() ([]NetworkInterface, error)
 }
 
 type NetworkInterface struct {

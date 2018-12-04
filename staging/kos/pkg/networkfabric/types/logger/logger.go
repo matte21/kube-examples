@@ -24,19 +24,19 @@ import (
 
 const fabricType = "logger"
 
-// A fake network interface fabric useful for debugging/testing.
-// It does nothing but logging.
+// Logger is a fake network interface fabric useful
+// for debugging/testing. It does nothing but logging.
 type Logger struct {
-	logLvl glog.Level
-	// TODO consider braking this into two separate lists for local ifcs and
-	// remote ifcs respectively
-	ifcs map[string]netfabric.NetworkInterface
+	logLvl     glog.Level
+	localIfcs  map[string]netfabric.NetworkInterface
+	remoteIfcs map[string]netfabric.NetworkInterface
 }
 
 func NewLogger(logLvl glog.Level) (l *Logger) {
 	l = &Logger{
-		logLvl: logLvl,
-		ifcs:   make(map[string]netfabric.NetworkInterface),
+		logLvl:     logLvl,
+		localIfcs:  make(map[string]netfabric.NetworkInterface),
+		remoteIfcs: make(map[string]netfabric.NetworkInterface),
 	}
 	return
 }
@@ -46,33 +46,41 @@ func (l *Logger) Type() string {
 }
 
 func (l *Logger) CreateLocalIfc(ifc netfabric.NetworkInterface) error {
-	l.ifcs[ifc.Name] = ifc
+	l.localIfcs[ifc.Name] = ifc
 	glog.V(l.logLvl).Infof("Created local interface %v\n", ifc)
 	return nil
 }
 
 func (l *Logger) DeleteLocalIfc(ifc netfabric.NetworkInterface) error {
-	delete(l.ifcs, ifc.Name)
+	delete(l.localIfcs, ifc.Name)
 	glog.V(l.logLvl).Infof("Deleted local interface %v\n", ifc)
 	return nil
 }
 
 func (l *Logger) CreateRemoteIfc(ifc netfabric.NetworkInterface) error {
-	l.ifcs[ifc.Name] = ifc
+	l.remoteIfcs[ifc.Name] = ifc
 	glog.V(l.logLvl).Infof("Created remote interface %v\n", ifc)
 	return nil
 }
 
 func (l *Logger) DeleteRemoteIfc(ifc netfabric.NetworkInterface) error {
-	delete(l.ifcs, ifc.Name)
+	delete(l.remoteIfcs, ifc.Name)
 	glog.V(l.logLvl).Infof("Deleted remote interface %v\n", ifc)
 	return nil
 }
 
-func (l *Logger) List() ([]netfabric.NetworkInterface, error) {
-	ifcsList := make([]netfabric.NetworkInterface, 0, len(l.ifcs))
-	for _, ifc := range l.ifcs {
-		ifcsList = append(ifcsList, ifc)
+func (l *Logger) ListLocalIfcs() ([]netfabric.NetworkInterface, error) {
+	localIfcsList := make([]netfabric.NetworkInterface, 0, len(l.localIfcs))
+	for _, ifc := range l.localIfcs {
+		localIfcsList = append(localIfcsList, ifc)
 	}
-	return ifcsList, nil
+	return localIfcsList, nil
+}
+
+func (l *Logger) ListRemoteIfcs() ([]netfabric.NetworkInterface, error) {
+	remoteIfcsList := make([]netfabric.NetworkInterface, 0, len(l.remoteIfcs))
+	for _, ifc := range l.remoteIfcs {
+		remoteIfcsList = append(remoteIfcsList, ifc)
+	}
+	return remoteIfcsList, nil
 }

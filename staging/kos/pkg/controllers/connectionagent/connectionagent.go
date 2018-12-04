@@ -46,9 +46,6 @@ import (
 )
 
 const (
-	// K8s API server reosurce name for NetworkAttachments.
-	attResourceName = "networkattachments"
-
 	// NetworkAttachments in network.example.com/v1alpha1
 	// fields names. Used to build field selectors.
 	attNodeFieldName   = "spec.node"
@@ -64,6 +61,10 @@ const (
 	// resync period for Informers caches. Set
 	// to 0 because we don't want resyncs.
 	resyncPeriod = 0
+
+	// names of indexers
+	attachmentIfcNameIdxName = "ifcName"
+	attachmentVNIIdxName     = "vni"
 )
 
 // vnState stores all the state needed for a Virtual Network for
@@ -195,7 +196,18 @@ func (ca *ConnectionAgent) Run(stopCh <-chan struct{}) error {
 	}
 	glog.V(2).Infoln("Local NetworkAttachments cache synced")
 
-	// TODO retrieve already existing interfaces and init data structures accordingly
+	// Delete interfaces associated with local NetworkAttachments
+	// which have been deleted while the Connection Agent was not
+	// running.
+	err = ca.deleteDanglingLocalIfcs()
+	if err != nil {
+		// ? In some cases it might make sense to keep running
+		// ? regardless of this error. Think this through.
+		return err
+	}
+
+	// TODO start remote informers (all or only those which might lead to a deletion?)
+	// TODO delete remote interfaces
 
 	for i := 0; i < ca.workers; i++ {
 		go k8swait.Until(ca.processQueue, time.Second, stopCh)
@@ -214,6 +226,9 @@ func (ca *ConnectionAgent) initLocalAttsInformerAndLister() {
 		resyncPeriod,
 		fromFieldsSelectorToTweakListOptionsFunc(localAttWithAnIPSelector))
 
+	ca.localAttsInformer.AddIndexers(map[string]k8scache.IndexFunc{
+		attachmentIfcNameIdxName: attachmentIfcName,
+		attachmentVNIIdxName:     attachmentVNI})
 	ca.localAttsInformer.AddEventHandler(k8scache.ResourceEventHandlerFuncs{
 		AddFunc:    ca.onLocalAttAdded,
 		UpdateFunc: ca.onLocalAttUpdated,
@@ -229,6 +244,38 @@ func (ca *ConnectionAgent) waitForLocalAttsCacheSync(stopCh <-chan struct{}) (er
 		err = fmt.Errorf("Caches failed to sync")
 	}
 	return
+}
+
+func (ca *ConnectionAgent) deleteDanglingLocalIfcs() error {
+	// Retrieve all local interfaces implemented
+	// by the network interface fabric.
+	allLocalIfcs, err := ca.netFabric.ListLocalIfcs()
+	if err != nil {
+		return err
+	}
+
+	// Retrieve the names of all the interaces owned by the local attachments in the local
+	// attachments cache and store such names as keys in a map to ease lookup by name.
+	ifcsBoundToLocalAttsSlice := ca.localAttsInformer.GetIndexer().ListIndexFuncValues(attachmentIfcNameIdxName)
+	ifcsBoundToLocalAttsMap := make(map[string]struct{}, len(ifcsBoundToLocalAttsSlice))
+	for _, ifcName := range ifcsBoundToLocalAttsSlice {
+		ifcsBoundToLocalAttsMap[ifcName] = struct{}{}
+	}
+
+	// For every local interface implemented by the network fabric, check if a local attachment
+	// owning it exists by looking into ifcsBoundToLocalAttsMap. If it's a miss, the attachment
+	// associated with the interface has been deleted while the connection agent was not running,
+	// hence we delete the interface.
+	errs := make([]error, 0)
+	for _, localIfc := range allLocalIfcs {
+		_, ifcFound := ifcsBoundToLocalAttsMap[localIfc.Name]
+		if !ifcFound {
+			err = ca.netFabric.DeleteLocalIfc(localIfc)
+			errs = append(errs, err)
+		}
+	}
+	_, err = aggregateErrors(",", errs...)
+	return err
 }
 
 func (ca *ConnectionAgent) processQueue() {
@@ -783,6 +830,20 @@ func fromFieldsSelectorToTweakListOptionsFunc(customFieldSelector string) kosint
 		allSelectors = append(allSelectors, customFieldSelector)
 		options.FieldSelector = strings.Join(allSelectors, ",")
 	}
+}
+
+// attachmentIfcName is an Index function that returns
+// the status.IfcName of a NetworkAttachment.
+func attachmentIfcName(obj interface{}) ([]string, error) {
+	att := obj.(*netv1a1.NetworkAttachment)
+	return []string{att.Status.IfcName}, nil
+}
+
+// attachmentVNI is an Index function that returns
+// the spec.VNI of a NetworkAttachment.
+func attachmentVNI(obj interface{}) ([]string, error) {
+	att := obj.(*netv1a1.NetworkAttachment)
+	return []string{fmt.Sprint(att.Spec.VNI)}, nil
 }
 
 // TODO add comments
