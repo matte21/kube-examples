@@ -35,13 +35,11 @@ import (
 )
 
 const (
-	nodeNameEnv      = "NODE_NAME"
-	hostIPEnv        = "HOST_IP"
-	netFabricTypeEnv = "NET_FABRIC_TYPE"
-
 	defaultNumWorkers  = 2
 	defaultClientQPS   = 100
 	defaultClientBurst = 200
+
+	queueName = "connection_agent_queue"
 )
 
 func main() {
@@ -67,22 +65,21 @@ func main() {
 		runtime.GOMAXPROCS(runtime.NumCPU())
 	}
 
-	nodeName, err := getNodeName(nodeName)
+	var err error
 	if nodeName == "" {
-		glog.Errorf("Could not retrieve node name: neither command line flag \"nodename\" nor env var \"NODE_NAME\" were set. Lookup of OS hostname failed: %s\n",
-			err.Error())
-		os.Exit(2)
+		// fall back to default node name
+		nodeName, err = os.Hostname()
+		if err != nil {
+			glog.Errorf("-nodename flag value was not provided and default value could not be retrieved: %s\n", err.Error())
+			os.Exit(2)
+		}
 	}
-
-	hostIP = getHostIP(hostIP)
 	if hostIP == "" {
-		glog.Errorf("Could not retrieve host IP: neither command line flag \"hostip\" nor env var \"HOST_IP\" were provided\n")
+		glog.Errorf("-hostip flag MUST have a value\n")
 		os.Exit(3)
 	}
 
-	netFabricType = getNetFabricType(netFabricType)
-	// No check on whether netFabricType is set because the
-	// factory falls back to a default implementation if not.
+	// The factory automatically falls back to a default implementation if netFabricType is not set
 	netFabric := netfabricfactory.NewNetFabricForType(netFabricType)
 
 	clientCfg, err := clientcmd.BuildConfigFromFlags("", kubeconfigFilename)
@@ -100,7 +97,7 @@ func main() {
 	}
 
 	// TODO think whether the rate limiter parameters make sense
-	queue := workqueue.NewRateLimitingQueue(workqueue.NewItemExponentialFailureRateLimiter(200*time.Millisecond, 8*time.Hour))
+	queue := workqueue.NewNamedRateLimitingQueue(workqueue.NewItemExponentialFailureRateLimiter(200*time.Millisecond, 8*time.Hour), queueName)
 
 	ca := cactlr.NewConnectionAgent(nodeName, hostIP, kcs, queue, workers, netFabric)
 
@@ -118,40 +115,6 @@ func main() {
 	if err != nil {
 		glog.Info(err)
 	}
-}
-
-func getNodeName(nodeName string) (string, error) {
-	if nodeName != "" {
-		return nodeName, nil
-	}
-	nodeName, _ = os.LookupEnv(nodeNameEnv)
-	if nodeName != "" {
-		return nodeName, nil
-	}
-	// fall back to host name, the default node name
-	return os.Hostname()
-}
-
-func getHostIP(hostIP string) string {
-	if hostIP != "" {
-		return hostIP
-	}
-	hostIP, _ = os.LookupEnv(hostIPEnv)
-	if hostIP != "" {
-		return hostIP
-	}
-	return ""
-}
-
-func getNetFabricType(netFabricType string) string {
-	if netFabricType != "" {
-		return netFabricType
-	}
-	netFabricType, _ = os.LookupEnv(netFabricTypeEnv)
-	if netFabricType != "" {
-		return netFabricType
-	}
-	return ""
 }
 
 // StopOnSignals makes a "stop channel" that is closed upon receipt of certain

@@ -471,14 +471,9 @@ func (ca *ConnectionAgent) processLocalAtt(attRef attQueueRef) error {
 			attRef.nsn.Namespace, attRef.nsn.Name, err.Error())
 		return nil
 	}
-	if err != nil && k8serrors.IsNotFound(err) {
-		// If we're here the attachment has been deleted
-		err = ca.releaseLocalAttResources(attRef)
-		return err
-	}
-	if err == nil && attRef.vni != localAtt.Spec.VNI {
-		// If we are here there's been an update on the vni field, and we must clear
-		// the resources associated with localAtt when it had the old vni field value.
+	if (err != nil && k8serrors.IsNotFound(err)) || (err == nil && attRef.vni != localAtt.Spec.VNI) {
+		// If we're here either the attachment has been deleted or there's been an update on the vni
+		// field, and we must clear the resources associated with localAtt when it had the old vni field value.
 		err = ca.releaseLocalAttResources(attRef)
 		return err
 	}
@@ -906,7 +901,7 @@ func (ca *ConnectionAgent) remoteAttInVNWithVirtualIPHostIPAndIfcSelector(vni ui
 	// remoteAttSelector expresses the constraint that the NetworkAttachment runs on a remote node.
 	remoteAttSelector := attNodeFieldName + notEqual + ca.localNodeName
 
-	// attWithAnIPSelector, attWithHostIPSelector and  attWithIfcSelector express the constraints that the
+	// attWithAnIPSelector, attWithHostIPSelector and attWithIfcSelector express the constraints that the
 	// NetworkAttachment has the fields storing virtual IP, host IP and ifc name sets, by saying that such
 	// fields must not be equal to the empty string.
 	attWithAnIPSelector := attIPFieldName + notEqual
