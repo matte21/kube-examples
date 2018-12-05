@@ -483,8 +483,8 @@ func (ca *ConnectionAgent) processLocalAtt(attRef attQueueRef) error {
 
 func (ca *ConnectionAgent) processRemoteAtt(attRef attQueueRef) error {
 	ifcKey := fromAttRefToVNIAndNsn(attRef)
-	stateOfAttVN, stateFound := ca.getVNStateForVNI(attRef.vni)
-	if !stateFound {
+	state := ca.getVNStateForVNI(attRef.vni)
+	if state == nil {
 		// If we're here the last local NetworkAttachment in the Virtual Network of the remote attachment
 		// referenced by attRef has been deleted => the attachment by attRef is no longer relevant for
 		// the connection agent.
@@ -494,7 +494,7 @@ func (ca *ConnectionAgent) processRemoteAtt(attRef attQueueRef) error {
 		}
 		return err
 	}
-	remoteAtt, err := stateOfAttVN.remoteAttsLister.Get(attRef.nsn.Name)
+	remoteAtt, err := state.remoteAttsLister.Get(attRef.nsn.Name)
 	if err != nil && !k8serrors.IsNotFound(err) {
 		// This should never happen. No point in retrying.
 		return nil
@@ -584,9 +584,9 @@ func (ca *ConnectionAgent) updateVNStateForExistingLocalAtt(localAtt *netv1a1.Ne
 	nsn := attNSN(localAtt)
 	vni := localAtt.Spec.VNI
 
-	state, stateExists := ca.getVNStateForVNI(vni)
+	state := ca.getVNStateForVNI(vni)
 	var attIsInState bool
-	if stateExists {
+	if state != nil {
 		state.mutex.RLock()
 		_, attIsInState = state.localAtts[nsn]
 		state.mutex.RUnlock()
@@ -598,12 +598,12 @@ func (ca *ConnectionAgent) updateVNStateForExistingLocalAtt(localAtt *netv1a1.Ne
 		return
 	}
 
-	if !stateExists || !attIsInState {
+	if state == nil || !attIsInState {
 		ca.vniToVnStateMutex.Lock()
 		// Do another lookup because since the previous one another worker might have initialized
 		// the Virtual Network state if it was missing or deleted it if it was there.
-		state, stateExists = ca.vniToVnState[vni]
-		if !stateExists {
+		state = ca.vniToVnState[vni]
+		if state == nil {
 			// The state for the Virtual Network localAtt is part of does not exist, so we create a new one
 			// and set it here without risk of race conditions because we hold the lock on ca.vniToVnStateMutex.
 			newVNState := &vnState{
@@ -636,8 +636,8 @@ func (ca *ConnectionAgent) updateVNStateForExistingLocalAtt(localAtt *netv1a1.Ne
 
 // TODO the algorithm in this method is terribly complicated. Try to simplify it and review it to make sure it's correct
 func (ca *ConnectionAgent) updateVNStateForDeletedLocalAtt(deletedAttRef attQueueRef) {
-	state, stateExists := ca.getVNStateForVNI(deletedAttRef.vni)
-	if !stateExists {
+	state := ca.getVNStateForVNI(deletedAttRef.vni)
+	if state == nil {
 		return
 	}
 	lastLocalAttInVN := ca.checkIfLastLocalAttInVNAndRemoveAttIfNot(deletedAttRef, state)
@@ -712,11 +712,10 @@ func (ca *ConnectionAgent) startRemoteAttsInformer(state *vnState) {
 	go state.remoteAttsInformer.Run(aggregateStopChannels(ca.stopCh, state.remoteAttsInformerStopCh))
 }
 
-func (ca *ConnectionAgent) getVNStateForVNI(vni uint32) (state *vnState, vnStateExists bool) {
+func (ca *ConnectionAgent) getVNStateForVNI(vni uint32) *vnState {
 	ca.vniToVnStateMutex.RLock()
 	defer ca.vniToVnStateMutex.RUnlock()
-	state, vnStateExists = ca.vniToVnState[vni]
-	return
+	return ca.vniToVnState[vni]
 }
 
 func (ca *ConnectionAgent) checkIfLastLocalAttInVNAndRemoveAttIfNot(deletedAttRef attQueueRef, state *vnState) (lastAtt bool) {
