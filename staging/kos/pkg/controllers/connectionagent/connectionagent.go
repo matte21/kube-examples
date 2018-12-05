@@ -790,13 +790,9 @@ func (ca *ConnectionAgent) setHostIPAndIfcNameInAttStatus(att *netv1a1.NetworkAt
 }
 
 func (ca *ConnectionAgent) ifcUpdateIsNeeded(ifc netfabric.NetworkInterface, att *netv1a1.NetworkAttachment) bool {
-	if ifc.GuestIP.String() != att.Status.IPv4 {
-		return true
-	}
-	if ifc.HostIP.String() != att.Status.HostIP {
-		return true
-	}
-	if ifc.VNI != att.Spec.VNI {
+	if (ifc.GuestIP.String() != att.Status.IPv4) ||
+		(ifc.HostIP.String() != att.Status.HostIP) ||
+		(ifc.VNI != att.Spec.VNI) {
 		return true
 	}
 	return false
