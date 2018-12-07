@@ -31,7 +31,7 @@ import (
 
 	kosclientset "k8s.io/examples/staging/kos/pkg/client/clientset/versioned"
 	cactlr "k8s.io/examples/staging/kos/pkg/controllers/connectionagent"
-	netfabricfactory "k8s.io/examples/staging/kos/pkg/networkfabric/factory"
+	netfabric "k8s.io/examples/staging/kos/pkg/networkfabric"
 )
 
 const (
@@ -46,14 +46,14 @@ func main() {
 	var (
 		nodeName               string
 		hostIP                 string
-		netFabricType          string
+		netFabricName          string
 		kubeconfigFilename     string
 		workers                int
 		clientQPS, clientBurst int
 	)
 	flag.StringVar(&nodeName, "nodename", "", "node name")
 	flag.StringVar(&hostIP, "hostip", "", "host IP")
-	flag.StringVar(&netFabricType, "netfabric", "", "network fabric type")
+	flag.StringVar(&netFabricName, "netfabric", "", "network fabric name")
 	flag.StringVar(&kubeconfigFilename, "kubeconfig", "", "kubeconfig filename")
 	flag.IntVar(&workers, "workers", defaultNumWorkers, "number of worker threads")
 	flag.IntVar(&clientQPS, "qps", defaultClientQPS, "limit on rate of calls to api-server")
@@ -79,13 +79,16 @@ func main() {
 		os.Exit(3)
 	}
 
-	// The factory automatically falls back to a default implementation if netFabricType is not set
-	netFabric := netfabricfactory.NewNetFabricForType(netFabricType)
+	netFabric, err := netfabric.NewNetFabricForName(netFabricName)
+	if err != nil {
+		glog.Errorf("network fabric not found: %s\n", err.Error())
+		os.Exit(4)
+	}
 
 	clientCfg, err := clientcmd.BuildConfigFromFlags("", kubeconfigFilename)
 	if err != nil {
 		glog.Errorf("Failed to build client config for kubeconfig=%q: %s\n", kubeconfigFilename, err.Error())
-		os.Exit(4)
+		os.Exit(5)
 	}
 	clientCfg.QPS = float32(clientQPS)
 	clientCfg.Burst = clientBurst
@@ -93,7 +96,7 @@ func main() {
 	kcs, err := kosclientset.NewForConfig(clientCfg)
 	if err != nil {
 		glog.Errorf("Failed to build KOS clientset for kubeconfig=%q: %s\n", kubeconfigFilename, err.Error())
-		os.Exit(5)
+		os.Exit(6)
 	}
 
 	// TODO think whether the rate limiter parameters make sense
@@ -104,7 +107,7 @@ func main() {
 	glog.Infof("Connection Agent start, nodeName=%s, hostIP=%s, netFabric=%s, kubeconfig=%q, workers=%d, QPS=%d, burst=%d\n",
 		nodeName,
 		hostIP,
-		netFabric.Type(),
+		netFabric.Name(),
 		kubeconfigFilename,
 		workers,
 		clientQPS,

@@ -32,4 +32,4 @@ spec:
         - -v=5
         - -nodename=$(NODE_NAME)
         - -hostip=$(HOST_IP)
-        - -netfabric="logger"
+        - -netfabric=logger

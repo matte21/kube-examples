@@ -21,7 +21,7 @@ import (
 )
 
 type Interface interface {
-	Type() string
+	Name() string
 	CreateLocalIfc(NetworkInterface) error
 	DeleteLocalIfc(NetworkInterface) error
 	CreateRemoteIfc(NetworkInterface) error
