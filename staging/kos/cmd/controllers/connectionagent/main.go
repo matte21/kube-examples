@@ -18,6 +18,7 @@ package main
 
 import (
 	"flag"
+	gonet "net"
 	"os"
 	"os/signal"
 	"runtime"
@@ -102,7 +103,7 @@ func main() {
 	// TODO think whether the rate limiter parameters make sense
 	queue := workqueue.NewNamedRateLimitingQueue(workqueue.NewItemExponentialFailureRateLimiter(200*time.Millisecond, 8*time.Hour), queueName)
 
-	ca := cactlr.NewConnectionAgent(nodeName, hostIP, kcs, queue, workers, netFabric)
+	ca := cactlr.NewConnectionAgent(nodeName, gonet.ParseIP(hostIP), kcs, queue, workers, netFabric)
 
 	glog.Infof("Connection Agent start, nodeName=%s, hostIP=%s, netFabric=%s, kubeconfig=%q, workers=%d, QPS=%d, burst=%d\n",
 		nodeName,

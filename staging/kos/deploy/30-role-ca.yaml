@@ -7,7 +7,9 @@ rules:
   - network.example.com
   resources:
   - networkattachments
+  - networkattachments/status
   verbs:
   - list
   - watch
   - update
+  - patch

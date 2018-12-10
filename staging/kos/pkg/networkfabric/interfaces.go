@@ -20,6 +20,10 @@ import (
 	"net"
 )
 
+// Interface is the interface of a network fabric which allows
+// the user to implement Netowrk Interfaces. The implementer
+// MUST return nil when the user attempts to delete an Interface
+// which does not exist.
 type Interface interface {
 	Name() string
 	CreateLocalIfc(NetworkInterface) error

@@ -17,6 +17,7 @@ package networkfabric
 
 import (
 	"github.com/golang/glog"
+	"sync"
 )
 
 const name = "logger"
@@ -25,8 +26,11 @@ const name = "logger"
 // for debugging/testing. It does nothing but logging.
 // TODO make logger thread safe
 type logger struct {
-	localIfcs  map[string]NetworkInterface
-	remoteIfcs map[string]NetworkInterface
+	localIfcsMutex sync.RWMutex
+	localIfcs      map[string]NetworkInterface
+
+	remoteIfcsMutex sync.RWMutex
+	remoteIfcs      map[string]NetworkInterface
 }
 
 func (l *logger) Name() string {
@@ -34,30 +38,41 @@ func (l *logger) Name() string {
 }
 
 func (l *logger) CreateLocalIfc(ifc NetworkInterface) error {
+	l.localIfcsMutex.Lock()
 	l.localIfcs[ifc.Name] = ifc
+	l.localIfcsMutex.Unlock()
 	glog.Infof("Created local interface %v\n", ifc)
 	return nil
 }
 
 func (l *logger) DeleteLocalIfc(ifc NetworkInterface) error {
+	l.localIfcsMutex.Lock()
 	delete(l.localIfcs, ifc.Name)
+	l.localIfcsMutex.Unlock()
+
 	glog.Infof("Deleted local interface %v\n", ifc)
 	return nil
 }
 
 func (l *logger) CreateRemoteIfc(ifc NetworkInterface) error {
+	l.remoteIfcsMutex.Lock()
 	l.remoteIfcs[ifc.Name] = ifc
+	l.remoteIfcsMutex.Unlock()
 	glog.Infof("Created remote interface %v\n", ifc)
 	return nil
 }
 
 func (l *logger) DeleteRemoteIfc(ifc NetworkInterface) error {
+	l.remoteIfcsMutex.Lock()
 	delete(l.remoteIfcs, ifc.Name)
+	l.remoteIfcsMutex.Unlock()
 	glog.Infof("Deleted remote interface %v\n", ifc)
 	return nil
 }
 
 func (l *logger) ListLocalIfcs() ([]NetworkInterface, error) {
+	l.localIfcsMutex.RLock()
+	defer l.localIfcsMutex.RUnlock()
 	localIfcsList := make([]NetworkInterface, 0, len(l.localIfcs))
 	for _, ifc := range l.localIfcs {
 		localIfcsList = append(localIfcsList, ifc)
@@ -66,6 +81,8 @@ func (l *logger) ListLocalIfcs() ([]NetworkInterface, error) {
 }
 
 func (l *logger) ListRemoteIfcs() ([]NetworkInterface, error) {
+	l.remoteIfcsMutex.RLock()
+	defer l.remoteIfcsMutex.RUnlock()
 	remoteIfcsList := make([]NetworkInterface, 0, len(l.remoteIfcs))
 	for _, ifc := range l.remoteIfcs {
 		remoteIfcsList = append(remoteIfcsList, ifc)
