@@ -24,7 +24,6 @@ const name = "logger"
 
 // Logger is a fake network interface fabric useful
 // for debugging/testing. It does nothing but logging.
-// TODO make logger thread safe
 type logger struct {
 	localIfcsMutex sync.RWMutex
 	localIfcs      map[string]NetworkInterface

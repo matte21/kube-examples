@@ -28,6 +28,7 @@ import (
 
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	k8smetav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	k8slabels "k8s.io/apimachinery/pkg/labels"
 	k8sruntime "k8s.io/apimachinery/pkg/runtime"
 	k8stypes "k8s.io/apimachinery/pkg/types"
 	k8sutilruntime "k8s.io/apimachinery/pkg/util/runtime"
@@ -46,6 +47,11 @@ import (
 )
 
 const (
+	// Name of the indexer which computes the MAC address
+	// for a network attachment. Used for handling of
+	// pre-existing interfaces at start-up.
+	attMACIndexName = "attachmentMAC"
+
 	// NetworkAttachments in network.example.com/v1alpha1
 	// fields names. Used to build field selectors.
 	attNodeFieldName   = "spec.node"
@@ -180,7 +186,27 @@ func (ca *ConnectionAgent) Run(stopCh <-chan struct{}) error {
 	}
 	glog.V(2).Infoln("Local NetworkAttachments cache synced")
 
-	// TODO initialization of existing interfaces goes here
+	err = ca.handlePreExistingLocalIfcs()
+	if err != nil {
+		// ? An error is returned if deleting a single interface fails. This might be a bad idea: we might just want to keep running
+		// (after logging the failure) if out of 1k interfaces one could not be deleted. In fact, if the network fabric (OvS) deletion
+		// can occasionally experience transient failures and we have a lot of interfaces on the node, the fact that we are just returning
+		// an error might make it impossible to make the connection agent successfully start up. If that's the case (OvS can experience
+		// flaky failures), we should retry to delete the interface after some time, not just simply log the failure, because that would
+		// mean leaving on the node an interface the connection agent is not aware of, and this could cause troubles if later an attachment
+		// which needs an interface with the same MAC as the one which could not be deleted is created. If insterad OvS is reliable and fails
+		// only when there's something wrong with the system state, then the current solution is fine. Choose what to do after the OvS network
+		// fabric is ready.
+		return err
+	}
+	glog.V(2).Infoln("Pre-existing local interfaces synced")
+
+	err = ca.handlePreExistingRemoteIfcs()
+	if err != nil {
+		// same considerations as for local ifcs
+		return err
+	}
+	glog.V(2).Infoln("Pre-existing remote interfaces synced")
 
 	for i := 0; i < ca.workers; i++ {
 		go k8swait.Until(ca.processQueue, time.Second, stopCh)
@@ -198,6 +224,8 @@ func (ca *ConnectionAgent) initLocalAttsInformerAndLister() {
 	ca.localAttsInformer, ca.localAttsLister = v1a1AttsCustomInformerAndLister(ca.kcs,
 		resyncPeriod,
 		fromFieldsSelectorToTweakListOptionsFunc(localAttWithAnIPSelector))
+
+	ca.localAttsInformer.AddIndexers(map[string]k8scache.IndexFunc{attMACIndexName: attachmentMACAddr})
 
 	ca.localAttsInformer.AddEventHandler(k8scache.ResourceEventHandlerFuncs{
 		AddFunc:    ca.onLocalAttAdded,
@@ -237,6 +265,104 @@ func (ca *ConnectionAgent) waitForLocalAttsCacheSync(stopCh <-chan struct{}) (er
 		err = fmt.Errorf("Caches failed to sync")
 	}
 	return
+}
+
+func (ca *ConnectionAgent) handlePreExistingLocalIfcs() error {
+	allPreExistingLocalIfcs, err := ca.netFabric.ListLocalIfcs()
+	if err != nil {
+		return fmt.Errorf("Failed initial local network interfaces list: %s", err.Error())
+	}
+	for _, aPreExistingLocalIfc := range allPreExistingLocalIfcs {
+		ifcMac := aPreExistingLocalIfc.GuestMAC.String()
+		ifcOwnerAtts, err := ca.localAttsInformer.GetIndexer().ByIndex(attMACIndexName, ifcMac)
+		if err != nil {
+			return fmt.Errorf("Indexing local network interface with MAC %s failed: %s", ifcMac, err.Error())
+		}
+		if len(ifcOwnerAtts) == 1 {
+			// If we're here there's a local attachment which should own the interface because their MAC
+			// addresses match. Hence we add the interface under the attachment namespaced name to the
+			// map associating interfaces and attachments.
+			ifcOwnerAtt := ifcOwnerAtts[0].(*netv1a1.NetworkAttachment)
+			firstLocalAttInVN := ca.updateVNStateForExistingLocalAtt(ifcOwnerAtt)
+			if firstLocalAttInVN {
+				glog.V(2).Infof("VN with ID %d became relevant: an Informer has been started", ifcOwnerAtt.Spec.VNI)
+			}
+			ca.localAttIfcs[attNSN(ifcOwnerAtt)] = aPreExistingLocalIfc
+			glog.V(3).Infof("Init: matched interface %v with local attachment %v", aPreExistingLocalIfc, ifcOwnerAtt)
+		} else {
+			err = ca.netFabric.DeleteLocalIfc(aPreExistingLocalIfc)
+			if err != nil {
+				return err
+			}
+			glog.V(3).Infof("Init: deleted orphan local interface %v", aPreExistingLocalIfc)
+		}
+	}
+	return nil
+}
+
+func (ca *ConnectionAgent) handlePreExistingRemoteIfcs() error {
+	// Start all remote attachments caches because we need to look up remote
+	// attachments to decide which interfaces to keep and which to delete
+	allLocalAtts, err := ca.localAttsLister.List(k8slabels.Everything())
+	if err != nil {
+		return fmt.Errorf("Failed initial local attachments list: %s", err.Error())
+	}
+	for _, aLocalAtt := range allLocalAtts {
+		firstLocalAttInVN := ca.updateVNStateForExistingLocalAtt(aLocalAtt)
+		if firstLocalAttInVN {
+			glog.V(2).Infof("VN with ID %d became relevant: an Informer has been started", aLocalAtt.Spec.VNI)
+		}
+	}
+
+	// Read all remote ifcs, for each interface find the attachment with the same MAC in the
+	// cache for the remote attachments with the same VNI as the interface. If either the
+	// attachment or the cache are not found, delete the interface, bind it to the attachment
+	// otherwise.
+	allPreExistingRemoteIfcs, err := ca.netFabric.ListRemoteIfcs()
+	if err != nil {
+		return fmt.Errorf("Failed initial remote network interfaces list: %s", err.Error())
+	}
+	for _, aPreExistingRemoteIfc := range allPreExistingRemoteIfcs {
+		var ifcOwnerAtts []interface{}
+		ifcMac := aPreExistingRemoteIfc.GuestMAC.String()
+		remoteAttsInformer, remoteAttsInformerStopCh := ca.getRemoteAttsInformerForVNI(aPreExistingRemoteIfc.VNI)
+		if remoteAttsInformer != nil {
+			if !remoteAttsInformer.HasSynced() &&
+				!k8scache.WaitForCacheSync(remoteAttsInformerStopCh, remoteAttsInformer.HasSynced) {
+				return fmt.Errorf("Failed to sync cache of remote attachments for VNI %d", aPreExistingRemoteIfc.VNI)
+			}
+			ifcOwnerAtts, err = remoteAttsInformer.GetIndexer().ByIndex(attMACIndexName, ifcMac)
+		}
+		if len(ifcOwnerAtts) == 1 {
+			// If we're here a remote attachment owning the interface has been found
+			ifcOwnerAtt := ifcOwnerAtts[0].(*netv1a1.NetworkAttachment)
+			remAttNSN := attNSN(ifcOwnerAtt)
+			ca.addRemoteAttToVNState(remAttNSN.Name, ifcOwnerAtt.Spec.VNI)
+			ca.remoteAttIfcs[remAttNSN] = aPreExistingRemoteIfc
+			glog.V(3).Infof("Init: matched interface %v with remote attachment %v", aPreExistingRemoteIfc, ifcOwnerAtt)
+		} else {
+			// If we're here either there's no remote attachments cache associated with the interface vni (because there are
+			// no local attachments with that vni), or no remote attachment owning the interface was found. Either ways, we need
+			// to delete the interface.
+			err = ca.netFabric.DeleteRemoteIfc(aPreExistingRemoteIfc)
+			if err != nil {
+				return err
+			}
+			glog.V(3).Infof("Init: deleted orphan remote interface %v", aPreExistingRemoteIfc)
+		}
+	}
+
+	return nil
+}
+
+// getRemoteAttsIndexerForVNI accesses the map with all the vnStates but it's not thread-safe
+// because it is meant to be used only at start-up, when there's only one thread running.
+func (ca *ConnectionAgent) getRemoteAttsInformerForVNI(vni uint32) (k8scache.SharedIndexInformer, chan struct{}) {
+	vnState := ca.vniToVnState[vni]
+	if vnState == nil {
+		return nil, nil
+	}
+	return vnState.remoteAttsInformer, vnState.remoteAttsInformerStopCh
 }
 
 func (ca *ConnectionAgent) processQueue() {
@@ -433,7 +559,7 @@ func (ca *ConnectionAgent) attemptToCreateRemoteAttIfc(att *netv1a1.NetworkAttac
 	guestIP := gonet.ParseIP(att.Status.IPv4)
 	guestMAC := generateMACAddr(vni, guestIP)
 	newIfc := netfabric.NetworkInterface{
-		Name:     att.Status.IfcName,
+		Name:     generateIfcName(guestMAC),
 		VNI:      vni,
 		GuestMAC: guestMAC,
 		GuestIP:  guestIP,
@@ -524,6 +650,8 @@ func (ca *ConnectionAgent) updateVNStateForExistingLocalAtt(localAtt *netv1a1.Ne
 			resyncPeriod,
 			localAtt.Namespace,
 			fromFieldsSelectorToTweakListOptionsFunc(ca.remoteAttInVNWithVirtualIPHostIPAndIfcSelector(vni)))
+
+		remoteAttsInformer.AddIndexers(map[string]k8scache.IndexFunc{attMACIndexName: attachmentMACAddr})
 
 		remoteAttsInformer.AddEventHandler(k8scache.ResourceEventHandlerFuncs{
 			AddFunc:    ca.onRemoteAttAdded,
@@ -852,6 +980,12 @@ func createAttsv1a1Informer(kcs *kosclientset.Clientset,
 		tweakListOptionsFunc)
 	netv1a1Ifc := localAttsInformerFactory.Network().V1alpha1()
 	return netv1a1Ifc.NetworkAttachments()
+}
+
+// attachmentMACAddr is an Index function that computes the MAC address of a NetworkAttachment
+func attachmentMACAddr(obj interface{}) (subnets []string, err error) {
+	att := obj.(*netv1a1.NetworkAttachment)
+	return []string{generateMACAddr(att.Spec.VNI, gonet.ParseIP(att.Status.IPv4)).String()}, nil
 }
 
 // TODO factor out attNSN in pkg controller/utils, as it is used both by
