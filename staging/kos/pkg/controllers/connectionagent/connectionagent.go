@@ -17,7 +17,6 @@ limitations under the License.
 package connectionagent
 
 import (
-	//	"bytes"
 	"fmt"
 	gonet "net"
 	"strings"
@@ -29,7 +28,6 @@ import (
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	k8smetav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	k8slabels "k8s.io/apimachinery/pkg/labels"
-	k8sruntime "k8s.io/apimachinery/pkg/runtime"
 	k8stypes "k8s.io/apimachinery/pkg/types"
 	k8sutilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	k8swait "k8s.io/apimachinery/pkg/util/wait"
@@ -43,6 +41,7 @@ import (
 	kosinternalifcs "k8s.io/examples/staging/kos/pkg/client/informers/externalversions/internalinterfaces"
 	kosinformersv1a1 "k8s.io/examples/staging/kos/pkg/client/informers/externalversions/network/v1alpha1"
 	koslisterv1a1 "k8s.io/examples/staging/kos/pkg/client/listers/network/v1alpha1"
+	kosctlrutils "k8s.io/examples/staging/kos/pkg/controllers/utils"
 	netfabric "k8s.io/examples/staging/kos/pkg/networkfabric"
 
 	"k8s.io/examples/staging/kos/pkg/uint32set"
@@ -248,21 +247,21 @@ func (ca *ConnectionAgent) initLocalAttsInformerAndLister() {
 func (ca *ConnectionAgent) onLocalAttAdded(obj interface{}) {
 	att := obj.(*netv1a1.NetworkAttachment)
 	glog.V(5).Infof("Local NetworkAttachments cache: notified of addition of %#+v", att)
-	ca.queue.Add(attNSN(att))
+	ca.queue.Add(kosctlrutils.AttNSN(att))
 }
 
 func (ca *ConnectionAgent) onLocalAttUpdated(oldObj, newObj interface{}) {
 	oldAtt := oldObj.(*netv1a1.NetworkAttachment)
 	newAtt := newObj.(*netv1a1.NetworkAttachment)
 	glog.V(5).Infof("Local NetworkAttachments cache: notified of update from %#+v to %#+v", oldAtt, newAtt)
-	ca.queue.Add(attNSN(newAtt))
+	ca.queue.Add(kosctlrutils.AttNSN(newAtt))
 }
 
 func (ca *ConnectionAgent) onLocalAttRemoved(obj interface{}) {
-	peeledObj := peel(obj)
+	peeledObj := kosctlrutils.Peel(obj)
 	att := peeledObj.(*netv1a1.NetworkAttachment)
 	glog.V(5).Infof("Local NetworkAttachments cache: notified of removal of %#+v", att)
-	ca.queue.Add(attNSN(att))
+	ca.queue.Add(kosctlrutils.AttNSN(att))
 }
 
 func (ca *ConnectionAgent) waitForLocalAttsCacheSync(stopCh <-chan struct{}) (err error) {
@@ -299,7 +298,7 @@ func (ca *ConnectionAgent) handlePreExistingLocalIfcs() error {
 			// If we're here there's a local attachment which should own the interface because their
 			// MAC addresses match. Hence we add the interface to the attachment state
 			ifcOwnerAtt := ifcOwnerAtts[0].(*netv1a1.NetworkAttachment)
-			attVNI, attNSN := ifcOwnerAtt.Spec.VNI, attNSN(ifcOwnerAtt)
+			attVNI, attNSN := ifcOwnerAtt.Spec.VNI, kosctlrutils.AttNSN(ifcOwnerAtt)
 			attState := ca.getAttState(attNSN)
 			if attState == nil {
 				attState := &attachmentState{
@@ -343,7 +342,7 @@ func (ca *ConnectionAgent) handlePreExistingRemoteIfcs() error {
 		return fmt.Errorf("Failed initial local attachments list: %s", err.Error())
 	}
 	for _, aLocalAtt := range allLocalAtts {
-		aLocalAttNSN, aLocalAttVNI := attNSN(aLocalAtt), aLocalAtt.Spec.VNI
+		aLocalAttNSN, aLocalAttVNI := kosctlrutils.AttNSN(aLocalAtt), aLocalAtt.Spec.VNI
 		aLocalAttState := ca.getAttState(aLocalAttNSN)
 		if aLocalAttState == nil {
 			aLocalAttState = &attachmentState{
@@ -381,7 +380,7 @@ func (ca *ConnectionAgent) handlePreExistingRemoteIfcs() error {
 		if len(ifcOwnerAtts) == 1 {
 			// If we're here a remote attachment owning the interface has been found
 			ifcOwnerAtt := ifcOwnerAtts[0].(*netv1a1.NetworkAttachment)
-			remAttNSN := attNSN(ifcOwnerAtt)
+			remAttNSN := kosctlrutils.AttNSN(ifcOwnerAtt)
 			remAttState := ca.getAttState(remAttNSN)
 			if remAttState == nil {
 				remAttState = &attachmentState{
@@ -524,7 +523,7 @@ func (ca *ConnectionAgent) getAttachment(attNSN k8stypes.NamespacedName) (att *n
 }
 
 func (ca *ConnectionAgent) processExistingAtt(att *netv1a1.NetworkAttachment) error {
-	attNSN, attVNI, attNode := attNSN(att), att.Spec.VNI, att.Spec.Node
+	attNSN, attVNI, attNode := kosctlrutils.AttNSN(att), att.Spec.VNI, att.Spec.Node
 
 	// Retrieve the last seen attachment state, which stores the attachment network
 	// interface if it was created, and the vni with which it was processed last time
@@ -850,7 +849,7 @@ func (ca *ConnectionAgent) initVNState(vni uint32, namespace string) *vnState {
 func (ca *ConnectionAgent) onRemoteAttAdded(obj interface{}) {
 	att := obj.(*netv1a1.NetworkAttachment)
 	glog.V(5).Infof("Remote NetworkAttachments cache for VNI %d: notified of addition of %#+v", att.Spec.VNI, att)
-	attNSN := attNSN(att)
+	attNSN := kosctlrutils.AttNSN(att)
 	ca.addVNI(attNSN, att.Spec.VNI)
 	ca.queue.Add(attNSN)
 }
@@ -859,14 +858,14 @@ func (ca *ConnectionAgent) onRemoteAttUpdated(oldObj, newObj interface{}) {
 	oldAtt := oldObj.(*netv1a1.NetworkAttachment)
 	newAtt := newObj.(*netv1a1.NetworkAttachment)
 	glog.V(5).Infof("Remote NetworkAttachments cache for VNI %d: notified of update from %#+v to %#+v", newAtt.Spec.VNI, oldAtt, newAtt)
-	ca.queue.Add(attNSN(newAtt))
+	ca.queue.Add(kosctlrutils.AttNSN(newAtt))
 }
 
 func (ca *ConnectionAgent) onRemoteAttRemoved(obj interface{}) {
-	peeledObj := peel(obj)
+	peeledObj := kosctlrutils.Peel(obj)
 	att := peeledObj.(*netv1a1.NetworkAttachment)
 	glog.V(5).Infof("Remote NetworkAttachments cache for VNI %d: notified of deletion of %#+v", att.Spec.VNI, att)
-	attNSN := attNSN(att)
+	attNSN := kosctlrutils.AttNSN(att)
 	ca.removeVNI(attNSN, att.Spec.VNI)
 	ca.queue.Add(attNSN)
 }
@@ -1034,13 +1033,6 @@ func attachmentMACAddr(obj interface{}) (subnets []string, err error) {
 	return []string{generateMACAddr(att.Spec.VNI, gonet.ParseIP(att.Status.IPv4)).String()}, nil
 }
 
-// TODO factor out attNSN in pkg controller/utils, as it is used both by
-// the connection agent and the IPAM controller.
-func attNSN(att *netv1a1.NetworkAttachment) k8stypes.NamespacedName {
-	return k8stypes.NamespacedName{Namespace: att.Namespace,
-		Name: att.Name}
-}
-
 func generateIfcName(macAddr gonet.HardwareAddr) string {
 	return "kos" + strings.Replace(macAddr.String(), ":", "", -1)
 }
@@ -1055,19 +1047,6 @@ func generateMACAddr(vni uint32, guestIPv4 gonet.IP) gonet.HardwareAddr {
 	mac[1] = guestIPBytes[1]
 	mac[0] = (guestIPBytes[3] & 0xF8) | ((guestIPBytes[0] & 0x02) << 1) | 2
 	return mac
-}
-
-// TODO factor out peel in pkg controller/utils, as it is used both by
-// the connection agent and the IPAM controller.
-func peel(obj interface{}) k8sruntime.Object {
-	switch o := obj.(type) {
-	case *k8scache.DeletedFinalStateUnknown:
-		return o.Obj.(k8sruntime.Object)
-	case k8sruntime.Object:
-		return o
-	default:
-		panic(obj)
-	}
 }
 
 // aggregateStopChannels returns a channel which
@@ -1104,7 +1083,7 @@ func aggregateErrors(sep string, errs ...error) error {
 	return nil
 }
 
-// TODO consider whether switching to pointers wrt value for the interface
+// TODO consider switching to pointers wrt value for the interface
 func ifcNeedsUpdate(ifc netfabric.NetworkInterface, newGuestIP, newHostIP gonet.IP, newVNI uint32) bool {
 	return !ifc.GuestIP.Equal(newGuestIP) ||
 		!ifc.HostIP.Equal(newHostIP) ||
