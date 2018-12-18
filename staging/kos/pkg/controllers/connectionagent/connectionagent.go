@@ -1045,16 +1045,15 @@ func generateIfcName(macAddr gonet.HardwareAddr) string {
 	return "kos" + strings.Replace(macAddr.String(), ":", "", -1)
 }
 
-// TODO change this to avoid collisions
 func generateMACAddr(vni uint32, guestIPv4 gonet.IP) gonet.HardwareAddr {
 	guestIPBytes := guestIPv4.To4()
 	mac := make([]byte, 6, 6)
 	mac[5] = byte(vni >> 0)
 	mac[4] = byte(vni >> 8)
 	mac[3] = byte(vni>>16) | (guestIPBytes[3] << 5)
-	mac[2] = (guestIPBytes[3] >> 3) | (guestIPBytes[2] << 5)
-	mac[1] = (guestIPBytes[2] >> 3) | (guestIPBytes[1] << 5)
-	mac[0] = (guestIPBytes[1] & 0xF8) | (guestIPBytes[0] & 0x04) | 2
+	mac[2] = guestIPBytes[2]
+	mac[1] = guestIPBytes[1]
+	mac[0] = (guestIPBytes[3] & 0xF8) | ((guestIPBytes[0] & 0x02) << 1) | 2
 	return mac
 }
 
