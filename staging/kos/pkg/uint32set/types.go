@@ -26,7 +26,7 @@ import (
 type UInt32Set interface {
 	fmt.Stringer
 
-	// Has indicates whether the set is empty.
+	// IsEmpty indicates whether the set is empty.
 	IsEmpty() bool
 
 	// Has indicates whether the given number is in the set.
@@ -69,6 +69,6 @@ type UInt32SetChecker interface {
 
 	// CouldAddInRange indicates whether a call to
 	// `AddOneInRange(min,max)` could return `(x,ok)`, and does the
-	// add iff `ok`.
+	// add if `ok`.
 	CouldAddInRange(min, max uint32, x uint32, ok bool) bool
 }
