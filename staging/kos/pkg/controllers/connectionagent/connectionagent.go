@@ -468,10 +468,13 @@ func (ca *ConnectionAgent) getAttachment(attNSN k8stypes.NamespacedName) (att *n
 	attSeenInVNIs := ca.getAttVNIs(attNSN)
 	nbrOfVNIs := len(attSeenInVNIs)
 	if nbrOfVNIs > 1 {
-		// If the attachment could be a remote one in more than one VNI, return an error. This will cause
-		// the att reference to be requeued, and hopefully by the time it is processed again the
-		// inconsistency as to which is the vni of the attachment has been resolved
-		err = fmt.Errorf("Attachment %s has inconsistent state, found in the following VNIs: %#v", attNSN, attSeenInVNIs)
+		// If the attachment could be a remote one in more than one VNI, we return immediately. When
+		// a deletion notification handler removes the VNI with which it's seeing the attachment the
+		// attachment state will be "less ambiguous" (one less potential VNI) and a reference
+		// will be enqueued again triggering reconsideration of the attachment.
+		glog.V(4).Infof("Attachment %s has inconsistent state, found in the following VNIs: %#v",
+			attNSN,
+			attSeenInVNIs)
 		return
 	}
 
@@ -501,11 +504,12 @@ func (ca *ConnectionAgent) getAttachment(attNSN k8stypes.NamespacedName) (att *n
 			attNSN,
 			aggregateErrors("\n\t", remAttCacheLookupErr, localAttCacheLookupErr).Error(),
 			attNSN)
-		err = nil
 	case attAsLocal != nil && attAsRemote != nil:
-		// If we're here the attachment has been found in both caches: return an error. This will cause its reference
-		// to be requeued, and hopefully by the time it's processed again the inconsistency has been resolved
-		err = fmt.Errorf("Att %s has inconsistent state: found both in local atts cache and remote atts cache for VNI %d",
+		// If we're here the attachment has been found in both caches, hence it's state is
+		// ambiguous. It will be deleted by one of the caches soon, and this will cause a reference
+		// to be enqueued, so it will be processed again when the ambiguity has been resolved
+		// (assuming it has not been seen with other VNIs meanwhile).
+		glog.V(4).Infof("Att %s has inconsistent state: found both in local atts cache and remote atts cache for VNI %d",
 			attNSN,
 			vni)
 	case attAsLocal != nil && attAsRemote == nil:
@@ -584,7 +588,10 @@ func (ca *ConnectionAgent) processExistingAtt(att *netv1a1.NetworkAttachment) er
 			return err
 		}
 		if updatedAtt != nil {
-			glog.V(3).Infof("Updated att %s status with hostIP: %s, ifcName: %s", attNSN, updatedAtt.Status.HostIP, updatedAtt.Status.IfcName)
+			glog.V(3).Infof("Updated att %s status with hostIP: %s, ifcName: %s",
+				attNSN,
+				updatedAtt.Status.HostIP,
+				updatedAtt.Status.IfcName)
 		}
 	}
 
@@ -1028,7 +1035,7 @@ func createAttsv1a1Informer(kcs *kosclientset.Clientset,
 
 // attachmentMACAddr is an Index function that computes the MAC address of a NetworkAttachment.
 // Used to map pre-existing interfaces with attachments at start up.
-func attachmentMACAddr(obj interface{}) (subnets []string, err error) {
+func attachmentMACAddr(obj interface{}) ([]string, error) {
 	att := obj.(*netv1a1.NetworkAttachment)
 	return []string{generateMACAddr(att.Spec.VNI, gonet.ParseIP(att.Status.IPv4)).String()}, nil
 }
@@ -1040,12 +1047,12 @@ func generateIfcName(macAddr gonet.HardwareAddr) string {
 func generateMACAddr(vni uint32, guestIPv4 gonet.IP) gonet.HardwareAddr {
 	guestIPBytes := guestIPv4.To4()
 	mac := make([]byte, 6, 6)
-	mac[5] = byte(vni >> 0)
+	mac[5] = byte(vni)
 	mac[4] = byte(vni >> 8)
-	mac[3] = byte(vni>>16) | (guestIPBytes[3] << 5)
+	mac[3] = guestIPBytes[3]
 	mac[2] = guestIPBytes[2]
 	mac[1] = guestIPBytes[1]
-	mac[0] = (guestIPBytes[3] & 0xF8) | ((guestIPBytes[0] & 0x02) << 1) | 2
+	mac[0] = (byte(vni>>13) & 0xF8) | ((guestIPBytes[0] & 0x02) << 1) | 2
 	return mac
 }
 
