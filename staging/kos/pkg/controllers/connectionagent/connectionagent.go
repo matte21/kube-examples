@@ -583,7 +583,7 @@ func (ca *ConnectionAgent) processExistingAtt(att *netv1a1.NetworkAttachment) er
 	if attNode == ca.localNodeName &&
 		(att.Status.HostIP != localHostIPStr || (attHasIfc && attIfc.Name != att.Status.IfcName)) {
 
-		updatedAtt, err := ca.setHostIPAndIfcNameInLocalAttStatus(att, ifcName, attHasIfc)
+		updatedAtt, err := ca.setAttStatus(att, ifcName, attHasIfc)
 		if err != nil {
 			return err
 		}
@@ -770,20 +770,18 @@ func (ca *ConnectionAgent) createOrUpdateIfc(attState *attachmentState,
 }
 
 func (ca *ConnectionAgent) deleteIfc(ifc netfabric.NetworkInterface, ifcNeedsDeletion bool) error {
-	var err error
 	if ifcNeedsDeletion {
 		if ifc.HostIP.Equal(ca.hostIP) {
 			// If we're here the interface is local
-			err = ca.netFabric.DeleteLocalIfc(ifc)
-		} else {
-			// If we're here the interface is remote
-			err = ca.netFabric.DeleteRemoteIfc(ifc)
+			return ca.netFabric.DeleteLocalIfc(ifc)
 		}
+		// If we're here the interface is remote
+		return ca.netFabric.DeleteRemoteIfc(ifc)
 	}
-	return err
+	return nil
 }
 
-func (ca *ConnectionAgent) setHostIPAndIfcNameInLocalAttStatus(att *netv1a1.NetworkAttachment,
+func (ca *ConnectionAgent) setAttStatus(att *netv1a1.NetworkAttachment,
 	ifcName string,
 	ifcNameIsValid bool) (*netv1a1.NetworkAttachment, error) {
 
@@ -971,9 +969,9 @@ func (ca *ConnectionAgent) remoteAttInVNWithVirtualIPHostIPAndIfcSelector(vni ui
 	attWithHostIPSelector := attHostIPFieldName + notEqual
 	attWithIfcSelector := attIfcFieldName + notEqual
 
-	// attInSpecificVNSelctor expresses the constraint that the NetworkAttachment is in the Virtual
+	// attInSpecificVNSelector expresses the constraint that the NetworkAttachment is in the Virtual
 	// Network identified by vni.
-	attInSpecificVNSelctor := attVNIFieldName + equal + fmt.Sprint(vni)
+	attInSpecificVNSelector := attVNIFieldName + equal + fmt.Sprint(vni)
 
 	// Build and return a selector which is a logical AND between all the selectors defined above.
 	allSelectors := []string{remoteAttSelector,
@@ -981,7 +979,7 @@ func (ca *ConnectionAgent) remoteAttInVNWithVirtualIPHostIPAndIfcSelector(vni ui
 		attWithAnIPSelector,
 		attWithHostIPSelector,
 		attWithIfcSelector,
-		attInSpecificVNSelctor}
+		attInSpecificVNSelector}
 	return strings.Join(allSelectors, ",")
 }
 
