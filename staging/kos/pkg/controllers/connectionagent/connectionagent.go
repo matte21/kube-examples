@@ -58,7 +58,6 @@ const (
 	attNodeFieldName   = "spec.node"
 	attIPFieldName     = "status.ipv4"
 	attHostIPFieldName = "status.hostIP"
-	attIfcFieldName    = "status.ifcName"
 	attVNIFieldName    = "spec.vni"
 
 	// fields selector comparison operators.
@@ -879,7 +878,7 @@ func (ca *ConnectionAgent) initVNState(vni uint32, namespace string) *vnState {
 	remoteAttsInformer, remoteAttsLister := v1a1AttsCustomNamespaceInformerAndLister(ca.kcs,
 		resyncPeriod,
 		namespace,
-		fromFieldsSelectorToTweakListOptionsFunc(ca.remoteAttInVNWithVirtualIPHostIPAndIfcSelector(vni)))
+		fromFieldsSelectorToTweakListOptionsFunc(ca.remoteAttInVNWithVirtualIPHostIPSelector(vni)))
 
 	remoteAttsInformer.AddIndexers(map[string]k8scache.IndexFunc{attMACIndexName: attachmentMACAddr})
 
@@ -1012,7 +1011,7 @@ func (ca *ConnectionAgent) localAttWithAnIPSelector() string {
 // Return a string representing a field selector that matches NetworkAttachments
 // that run on a remote node on the Virtual Network identified by the given VNI
 // and have a virtual IP and the host IP field set.
-func (ca *ConnectionAgent) remoteAttInVNWithVirtualIPHostIPAndIfcSelector(vni uint32) string {
+func (ca *ConnectionAgent) remoteAttInVNWithVirtualIPHostIPSelector(vni uint32) string {
 	// remoteAttSelector expresses the constraint that the NetworkAttachment
 	// runs on a remote node.
 	remoteAttSelector := attNodeFieldName + notEqual + ca.localNodeName
@@ -1027,13 +1026,11 @@ func (ca *ConnectionAgent) remoteAttInVNWithVirtualIPHostIPAndIfcSelector(vni ui
 	// interface with the host IP of the local node.
 	hostIPIsNotLocalSelector := attHostIPFieldName + notEqual + ca.hostIP.String()
 
-	// attWithAnIPSelector, attWithHostIPSelector and attWithIfcSelector express
-	// the constraints that the NetworkAttachment has the fields storing virtual
-	// IP, host IP and ifc name sets, by saying that such fields must not be equal
-	// to the empty string.
+	// attWithAnIPSelector and attWithHostIPSelector express the constraints that
+	// the NetworkAttachment has the fields storing virtual IP and host IP set,
+	// by saying that such fields must not be equal to the empty string.
 	attWithAnIPSelector := attIPFieldName + notEqual
 	attWithHostIPSelector := attHostIPFieldName + notEqual
-	attWithIfcSelector := attIfcFieldName + notEqual
 
 	// attInSpecificVNSelector expresses the constraint that the NetworkAttachment
 	// is in the Virtual Network identified by vni.
@@ -1045,7 +1042,6 @@ func (ca *ConnectionAgent) remoteAttInVNWithVirtualIPHostIPAndIfcSelector(vni ui
 		hostIPIsNotLocalSelector,
 		attWithAnIPSelector,
 		attWithHostIPSelector,
-		attWithIfcSelector,
 		attInSpecificVNSelector}
 	return strings.Join(allSelectors, ",")
 }
@@ -1099,7 +1095,8 @@ func createAttsv1a1Informer(kcs *kosclientset.Clientset,
 }
 
 // attachmentMACAddr is an Index function that computes the MAC address of a
-// NetworkAttachment. Used to map pre-existing interfaces with attachments at start up.
+// NetworkAttachment. Used to map pre-existing interfaces with attachments at
+// start up.
 func attachmentMACAddr(obj interface{}) ([]string, error) {
 	att := obj.(*netv1a1.NetworkAttachment)
 	return []string{generateMACAddr(att.Spec.VNI, gonet.ParseIP(att.Status.IPv4)).String()}, nil

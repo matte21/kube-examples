@@ -68,7 +68,7 @@ func addFieldConversions(scheme *runtime.Scheme) error {
 
 func convertNetworkAttachmentFields(label, value string) (internalLabel, internalValue string, err error) {
 	switch label {
-	case "metadata.name", "metadata.namespace", "spec.node", "spec.subnet", "spec.vni", "status.ipv4", "status.hostIP", "status.ifcName":
+	case "metadata.name", "metadata.namespace", "spec.node", "spec.subnet", "spec.vni", "status.ipv4", "status.hostIP":
 		return label, value, nil
 	default:
 		return "", "", fmt.Errorf("NetworkAttachment does not have field with label %q", label)
