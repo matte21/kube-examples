@@ -492,7 +492,7 @@ func (ca *ConnectionAgent) processNetworkAttachment(attNSN k8stypes.NamespacedNa
 // attachment is considered amibguous if it either has been seen with more than
 // one vni in a remote attachments cache, or if it is found both in the local
 // attachments cache and a remote attachments cache.
-func (ca *ConnectionAgent) getAttachment(attNSN k8stypes.NamespacedName) (att *netv1a1.NetworkAttachment, attDeleted bool, err error) {
+func (ca *ConnectionAgent) getAttachment(attNSN k8stypes.NamespacedName) (*netv1a1.NetworkAttachment, bool, error) {
 	// Retrieve the VNIs where the attachment could be as a remote attachment
 	attSeenInVNIs := ca.getAttVNIs(attNSN)
 	nbrOfVNIs := len(attSeenInVNIs)
@@ -505,7 +505,7 @@ func (ca *ConnectionAgent) getAttachment(attNSN k8stypes.NamespacedName) (att *n
 		glog.V(4).Infof("Attachment %s has inconsistent state, found in the following VNIs: %#v",
 			attNSN,
 			attSeenInVNIs)
-		return
+		return nil, false, nil
 	}
 
 	// If the attachment has been seen in exactly one VNI lookup it up in
@@ -547,18 +547,18 @@ func (ca *ConnectionAgent) getAttachment(attNSN k8stypes.NamespacedName) (att *n
 	case attAsLocal != nil && attAsRemote == nil:
 		// If we're here the attachment was found only in the local cache:
 		// that's the univocal version of the attachment
-		att = attAsLocal
+		return attAsLocal, false, nil
 	case attAsLocal == nil && attAsRemote != nil:
 		// If we're here the attachment was found only in the remote attachments
 		// cache for its vni: that's the univocal version of the attachment
-		att = attAsRemote
+		return attAsRemote, false, nil
 	default:
 		// If we're here neither lookup could find the attachment: we assume the
 		// attachment has been deleted by both caches and is therefore no longer
 		// relevant to the connection agent
-		attDeleted = true
+		return nil, true, nil
 	}
-	return
+	return nil, false, nil
 }
 
 func (ca *ConnectionAgent) processExistingAtt(att *netv1a1.NetworkAttachment) error {
