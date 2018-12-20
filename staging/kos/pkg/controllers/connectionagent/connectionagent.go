@@ -486,12 +486,13 @@ func (ca *ConnectionAgent) processNetworkAttachment(attNSN k8stypes.NamespacedNa
 }
 
 // getAttachment attempts to determine the univocal version of the NetworkAttachment
-// with namespaced name attNSN. If it succeeds it returns the attachment if it is found
-// in an Informer cache or attDeleted set to true if it could not be found in any cache
-// (e.g. because it has been deleted). If the current attachment version cannot be determined
-// without ambiguity, an error is returned. An attachment is considered amibguous if it either
-// has been seen with more than one vni in a remote attachments cache, or if it is found
-// both in the local attachments cache and a remote attachments cache.
+// with namespaced name attNSN. If it succeeds it returns the attachment if it is
+// found in an Informer cache or attDeleted set to true if it could not be found
+// in any cache (e.g. because it has been deleted). If the current attachment
+// version cannot be determined without ambiguity, an error is returned. An
+// attachment is considered amibguous if it either has been seen with more than
+// one vni in a remote attachments cache, or if it is found both in the local
+// attachments cache and a remote attachments cache.
 func (ca *ConnectionAgent) getAttachment(attNSN k8stypes.NamespacedName) (att *netv1a1.NetworkAttachment, attDeleted bool, err error) {
 	// Retrieve the VNIs where the attachment could be as a remote attachment
 	attSeenInVNIs := ca.getAttVNIs(attNSN)
@@ -541,7 +542,7 @@ func (ca *ConnectionAgent) getAttachment(attNSN k8stypes.NamespacedName) (att *n
 		// this will cause a reference to be enqueued, so it will be processed
 		// again when the ambiguity has been resolved (assuming it has not been
 		// seen with other VNIs meanwhile).
-		glog.V(4).Infof("Att %s has inconsistent state: found both in local atts cache and remote atts cache for VNI %d",
+		glog.V(4).Infof("att %s has inconsistent state: found both in local atts cache and remote atts cache for VNI %d",
 			attNSN,
 			vni)
 	case attAsLocal != nil && attAsRemote == nil:
@@ -576,18 +577,20 @@ func (ca *ConnectionAgent) processExistingAtt(att *netv1a1.NetworkAttachment) er
 		ca.setAttState(attNSN, attState)
 	}
 
-	// Update the vnState associated with the attachment. This typically involves adding
-	// the attachment to the vnState associated to its vni (and initializing that vnState
-	// if the attachment is the first local one with its vni), but could also entail removing
-	// the attachment from the vnState associated with its old vni if the vni has changed.
+	// Update the vnState associated with the attachment. This typically involves
+	// adding the attachment to the vnState associated to its vni (and initializing
+	// that vnState if the attachment is the first local one with its vni), but
+	// could also entail removing the attachment from the vnState associated with
+	// its old vni if the vni has changed.
 	var err error
 	vnState, firstLocalAttInVN := ca.updateVNState(attState, attVNI, attNSN, attNode)
 	if firstLocalAttInVN {
 		glog.V(2).Infof("VN with ID %d became relevant: an Informer has been started", attVNI)
 	}
 	if vnState != nil {
-		// If we're here att is currently remote but was previously the last local attachment
-		// in its vni. Thus, we act as if the last local attachment in the vn was deleted
+		// If we're here att is currently remote but was previously the last local
+		// attachment in its vni. Thus, we act as if the last local attachment
+		// in the vn was deleted
 		ca.stopRemoteAttInformerAndEnqueueRemoteAttRefs(vnState, attVNI)
 		return nil
 	}
@@ -603,7 +606,11 @@ func (ca *ConnectionAgent) processExistingAtt(att *netv1a1.NetworkAttachment) er
 	} else {
 		attHostIP = gonet.ParseIP(att.Status.HostIP)
 	}
-	attIfc, attHasIfc, err := ca.createOrUpdateIfc(attState, attGuestIP, attHostIP, attVNI, attNSN)
+	attIfc, attHasIfc, err := ca.createOrUpdateIfc(attState,
+		attGuestIP,
+		attHostIP,
+		attVNI,
+		attNSN)
 
 	// Update attState with the most recent interface (if it's been created)
 	attState.ifc, attState.ifcIsValid = attIfc, attHasIfc
@@ -616,9 +623,9 @@ func (ca *ConnectionAgent) processExistingAtt(att *netv1a1.NetworkAttachment) er
 	localHostIPStr := ca.hostIP.String()
 	ifcName := attIfc.Name
 	if attNode == ca.localNodeName &&
-		(att.Status.HostIP != localHostIPStr || (attHasIfc && attIfc.Name != att.Status.IfcName)) {
+		(att.Status.HostIP != localHostIPStr || (attIfc.Name != att.Status.IfcName)) {
 
-		updatedAtt, err := ca.setAttStatus(att, ifcName, attHasIfc)
+		updatedAtt, err := ca.setAttStatus(att, ifcName)
 		if err != nil {
 			return err
 		}
@@ -826,14 +833,11 @@ func (ca *ConnectionAgent) deleteIfc(ifc netfabric.NetworkInterface, ifcNeedsDel
 }
 
 func (ca *ConnectionAgent) setAttStatus(att *netv1a1.NetworkAttachment,
-	ifcName string,
-	ifcNameIsValid bool) (*netv1a1.NetworkAttachment, error) {
+	ifcName string) (*netv1a1.NetworkAttachment, error) {
 
 	att2 := att.DeepCopy()
 	att2.Status.HostIP = ca.hostIP.String()
-	if ifcNameIsValid {
-		att2.Status.IfcName = ifcName
-	}
+	att2.Status.IfcName = ifcName
 	updatedAtt, err := ca.netv1a1Ifc.NetworkAttachments(att2.Namespace).Update(att2)
 	return updatedAtt, err
 }
@@ -857,7 +861,9 @@ func (ca *ConnectionAgent) removeAttFromVNState(attName string, vni uint32) *vnS
 	return nil
 }
 
-func (ca *ConnectionAgent) stopRemoteAttInformerAndEnqueueRemoteAttRefs(vnState *vnState, vni uint32) {
+func (ca *ConnectionAgent) stopRemoteAttInformerAndEnqueueRemoteAttRefs(vnState *vnState,
+	vni uint32) {
+
 	close(vnState.remoteAttsInformerStopCh)
 	for aRemoteAttName := range vnState.remoteAtts {
 		aRemoteAttNSN := k8stypes.NamespacedName{
@@ -974,8 +980,9 @@ func (ca *ConnectionAgent) getRemoteAttListerForVNI(vni uint32) koslisterv1a1.Ne
 	return vnState.remoteAttsLister
 }
 
-// getRemoteAttsIndexerForVNI accesses the map with all the vnStates but it's not thread-safe
-// because it is meant to be used only at start-up, when there's only one thread running.
+// getRemoteAttsIndexerForVNI accesses the map with all the vnStates but it's not
+// thread-safe because it is meant to be used only at start-up, when there's only
+// one thread running.
 func (ca *ConnectionAgent) getRemoteAttsInformerForVNI(vni uint32) (k8scache.SharedIndexInformer, chan struct{}) {
 	vnState := ca.vniToVnState[vni]
 	if vnState == nil {
@@ -987,11 +994,13 @@ func (ca *ConnectionAgent) getRemoteAttsInformerForVNI(vni uint32) (k8scache.Sha
 // Return a string representing a field selector that matches NetworkAttachments
 // that run on the local node and have a virtual IP.
 func (ca *ConnectionAgent) localAttWithAnIPSelector() string {
-	// localAttSelector expresses the constraint that the NetworkAttachment runs on this node.
+	// localAttSelector expresses the constraint that the NetworkAttachment runs
+	// on this node.
 	localAttSelector := attNodeFieldName + equal + ca.localNodeName
 
-	// Express the constraint that the NetworkAttachment has a virtual IP by saying
-	// that the field containig the virtual IP must not be equal to the empty string.
+	// Express the constraint that the NetworkAttachment has a virtual IP by
+	// saying that the field containig the virtual IP must not be equal to the
+	// empty string.
 	attWithAnIPSelector := attIPFieldName + notEqual
 
 	// Build a selector which is a logical AND between
