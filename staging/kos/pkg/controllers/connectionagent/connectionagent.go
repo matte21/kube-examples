@@ -96,46 +96,54 @@ type vnState struct {
 	// associated with this vnState.
 	namespace string
 
-	// localAtts and remoteAtts store the names of the local and remote NetworkAttachments
-	// in the Virtual Network the vnState represents, respectively. localAtts is used to
-	// detect when the last local attachment in the virtual network is deleted, so that
-	// remoteAttsInformer can be stopped. remoteAtts is used to enqueue references to
-	// the remote attachments in the Virtual Network when such Virtual Network becomes
-	// irrelevant (deletion of last local attachment), so that the interfaces of the remote
-	// attachments can be deleted.
+	// localAtts and remoteAtts store the names of the local and remote
+	// NetworkAttachments in the Virtual Network the vnState represents,
+	// respectively. localAtts is used to detect when the last local attachment
+	// in the virtual network is deleted, so that remoteAttsInformer can be
+	// stopped. remoteAtts is used to enqueue references to the remote
+	// attachments in the Virtual Network when such Virtual Network becomes
+	// irrelevant (deletion of last local attachment), so that the interfaces of
+	// the remote attachments can be deleted.
 	localAtts  map[string]struct{}
 	remoteAtts map[string]struct{}
 }
 
-// attachmentState represents the state associated with a NetworkAttachment relevant to the ConnectionAgent.
+// attachmentState represents the state associated with a NetworkAttachment
+// relevant to the ConnectionAgent.
 type attachmentState struct {
-	// vnStateVNI represents the last seen vni of the attachment, that is, the vni associated with the
-	// vnState the attachment name is stored in. It is used when processing an attachment because the
-	// attachment stored in the Informer cache only carries the most recent vni. But if there's been
-	// an update to the vni field, the attachment name must be removed by the vnState associated with the
-	// old vni, hence vnStateVNI is used to store the old vni value.
+	// vnStateVNI represents the last seen vni of the attachment, that is, the
+	// vni associated with the vnState the attachment name is stored in. It is
+	// used when processing an attachment because the attachment stored in the
+	// Informer cache only carries the most recent vni. But if there's been an
+	// update to the vni field, the attachment name must be removed by the
+	// vnState associated with the old vni, hence vnStateVNI is used to store
+	// the old vni value.
 	vnStateVNI uint32
 
-	// if ifcIsValid is true ifc stores the netfabric NetworkInterface for the attachment. Used to delete
-	// the interface if the attachment is deleted and to detect cases where the interface should be updated
-	// by comparing its fields against those in the most recent version of the attachment.
+	// if ifcIsValid is true ifc stores the netfabric NetworkInterface for the
+	// attachment. Used to delete the interface if the attachment is deleted and
+	// to detect cases where the interface should be updated by comparing its
+	// fields against those in the most recent version of the attachment.
 	ifcIsValid bool
 	ifc        netfabric.NetworkInterface
 }
 
-// ConnectionAgent represents a K8S controller which runs on every node of the cluster and
-// eagerly maintains up-to-date the mapping between virtual IPs and physical IPs for
-// every relevant NetworkAttachment. A NetworkAttachment is relevant to a connection agent
-// if: (1) it runs on the same node as the connection agent, or (2) it's part of a
-// Virtual Network where at least one NetworkAttachment for which (1) is true exists.
-// To achieve its goal, a connection agent receives notifications about relevant
-// NetworkAttachments from the K8s API server through Informers, and when necessary
-// creates/updates/deletes Network Interfaces through a low-level network interface fabric.
-// When a new Virtual Network becomes relevant for the connection agent because of the creation
-// of the first attachment of that Virtual Network on the same node as the connection agent,
-// a new informer on remote NetworkAttachments in that Virtual Network is created. Upon being
-// notified of the creation of a local NetworkAttachment, the connection agent also updates the status
-// of such attachment with its host IP and the name of the interface which was created.
+// ConnectionAgent represents a K8S controller which runs on every node of the
+// cluster and eagerly maintains up-to-date the mapping between virtual IPs and
+// physical IPs for every relevant NetworkAttachment. A NetworkAttachment is
+// relevant to a connection agent if: (1) it runs on the same node as the
+// connection agent, or (2) it's part of a Virtual Network where at least one
+// NetworkAttachment for which (1) is true exists. To achieve its goal, a
+// connection agent receives notifications about relevant NetworkAttachments
+// from the K8s API server through Informers, and when necessary
+// creates/updates/deletes Network Interfaces through a low-level network
+// interface fabric. When a new Virtual Network becomes relevant for the
+// connection agent because of the creation of the first attachment of that
+// Virtual Network on the same node as the connection agent, a new informer on
+// remote NetworkAttachments in that Virtual Network is created. Upon being
+// notified of the creation of a local NetworkAttachment, the connection agent
+// also updates the status of such attachment with its host IP and the name of
+// the interface which was created.
 type ConnectionAgent struct {
 	localNodeName string
 	hostIP        gonet.IP
@@ -146,33 +154,39 @@ type ConnectionAgent struct {
 	netFabric     netfabric.Interface
 	stopCh        <-chan struct{}
 
-	// Informer and lister on NetworkAttachments on the same node as the connection agent
+	// Informer and lister on NetworkAttachments on the same node as the
+	// connection agent
 	localAttsInformer k8scache.SharedIndexInformer
 	localAttsLister   koslisterv1a1.NetworkAttachmentLister
 
-	// Map from vni to vnState associated with that vni. Accessed only while holding vniToVnStateMutex
+	// Map from vni to vnState associated with that vni. Accessed only while
+	// holding vniToVnStateMutex
 	vniToVnStateMutex sync.RWMutex
 	vniToVnState      map[uint32]*vnState
 
-	// nsnToAttState maps attachments (both local and remote) to namespaced names and state
-	// associated with that attachment. Accessed only while holding nsnToAttStateMutex
+	// nsnToAttState maps attachments (both local and remote) to namespaced
+	// names and state associated with that attachment. Accessed only while
+	// holding nsnToAttStateMutex
 	nsnToAttStateMutex sync.RWMutex
 	nsnToAttState      map[k8stypes.NamespacedName]*attachmentState
 
-	// nsnToVNIs maps attachments (both local and remote) to namespaced names and set of vnis where the attachment
-	// has been seen. It is accessed by the notification handlers for remote attachments, which add/remove
-	// the vni with which they see the attachment upon creation/deletion of the attachment respectively.
-	// When a worker processes an attachment reference, it reads from nsnToVNIs the vnis with which the
-	// attachment has been seen. If there's more than one vni, the current state of the attachment is ambiguous
-	// and the worker stops the processing and returns an error. This causes the reference to be requeued
-	// with a delay, and hopefully by the time it is dequeued again the ambiguity as for the current attachment
-	// state has been resolved. Accessed only while holding nsnToVNIsMutex.
+	// nsnToVNIs maps attachments (both local and remote) to namespaced names
+	// and set of vnis where the attachment has been seen. It is accessed by the
+	// notification handlers for remote attachments, which add/remove the vni
+	// with which they see the attachment upon creation/deletion of the attachment
+	// respectively. When a worker processes an attachment reference, it reads
+	// from nsnToVNIs the vnis with which the attachment has been seen. If there's
+	// more than one vni, the current state of the attachment is ambiguous and
+	// the worker stops the processing and returns an error. This causes the
+	// reference to be requeued with a delay, and hopefully by the time it is
+	// dequeued again the ambiguity as for the current attachment state has been
+	// resolved. Accessed only while holding nsnToVNIsMutex.
 	nsnToVNIsMutex sync.RWMutex
 	nsnToVNIs      map[k8stypes.NamespacedName]*uint32set.HashUInt32Set
 }
 
-// NewConnectionAgent returns a deactivated instance of a ConnectionAgent (neither the
-// workers goroutines nor any Informer have been started). Invoke Run to activate.
+// NewConnectionAgent returns a deactivated instance of a ConnectionAgent (neither
+// the workers goroutines nor any Informer have been started). Invoke Run to activate.
 func NewConnectionAgent(localNodeName string,
 	hostIP gonet.IP,
 	kcs *kosclientset.Clientset,
@@ -194,9 +208,9 @@ func NewConnectionAgent(localNodeName string,
 	}
 }
 
-// Run activates the ConnectionAgent: the local attachments informer is started, pre-existing
-// network interfaces on the node are handled, and the worker goroutines are started. Close stopCh
-// to stop the ConnectionAgent.
+// Run activates the ConnectionAgent: the local attachments informer is started,
+// pre-existing network interfaces on the node are handled, and the worker
+// goroutines are started. Close stopCh to stop the ConnectionAgent.
 func (ca *ConnectionAgent) Run(stopCh <-chan struct{}) error {
 	defer k8sutilruntime.HandleCrash()
 	defer ca.queue.ShutDown()
@@ -229,7 +243,8 @@ func (ca *ConnectionAgent) Run(stopCh <-chan struct{}) error {
 
 func (ca *ConnectionAgent) initLocalAttsInformerAndLister() {
 	localAttWithAnIPSelector := ca.localAttWithAnIPSelector()
-	glog.V(6).Info("Created Local NetworkAttachments fields selector: " + localAttWithAnIPSelector)
+	glog.V(6).Info("Created Local NetworkAttachments fields selector: " +
+		localAttWithAnIPSelector)
 
 	ca.localAttsInformer, ca.localAttsLister = v1a1AttsCustomInformerAndLister(ca.kcs,
 		resyncPeriod,
@@ -253,7 +268,9 @@ func (ca *ConnectionAgent) onLocalAttAdded(obj interface{}) {
 func (ca *ConnectionAgent) onLocalAttUpdated(oldObj, newObj interface{}) {
 	oldAtt := oldObj.(*netv1a1.NetworkAttachment)
 	newAtt := newObj.(*netv1a1.NetworkAttachment)
-	glog.V(5).Infof("Local NetworkAttachments cache: notified of update from %#+v to %#+v", oldAtt, newAtt)
+	glog.V(5).Infof("Local NetworkAttachments cache: notified of update from %#+v to %#+v",
+		oldAtt,
+		newAtt)
 	ca.queue.Add(kosctlrutils.AttNSN(newAtt))
 }
 
@@ -271,14 +288,14 @@ func (ca *ConnectionAgent) waitForLocalAttsCacheSync(stopCh <-chan struct{}) (er
 	return
 }
 
-func (ca *ConnectionAgent) handlePreExistingIfcs() error {
-	err := ca.handlePreExistingLocalIfcs()
+func (ca *ConnectionAgent) handlePreExistingIfcs() (err error) {
+	err = ca.handlePreExistingLocalIfcs()
 	if err != nil {
-		return err
+		return
 	}
 
 	err = ca.handlePreExistingRemoteIfcs()
-	return err
+	return
 }
 
 func (ca *ConnectionAgent) handlePreExistingLocalIfcs() error {
@@ -291,12 +308,15 @@ func (ca *ConnectionAgent) handlePreExistingLocalIfcs() error {
 		ifcMAC := aPreExistingLocalIfc.GuestMAC.String()
 		ifcOwnerAtts, err := ca.localAttsInformer.GetIndexer().ByIndex(attMACIndexName, ifcMAC)
 		if err != nil {
-			return fmt.Errorf("Indexing local network interface with MAC %s failed: %s", ifcMAC, err.Error())
+			return fmt.Errorf("Indexing local network interface with MAC %s failed: %s",
+				ifcMAC,
+				err.Error())
 		}
 
 		if len(ifcOwnerAtts) == 1 {
-			// If we're here there's a local attachment which should own the interface because their
-			// MAC addresses match. Hence we add the interface to the attachment state
+			// If we're here there's a local attachment which should own the interface
+			// because their MAC addresses match. Hence we add the interface to
+			// the attachment state.
 			ifcOwnerAtt := ifcOwnerAtts[0].(*netv1a1.NetworkAttachment)
 			attVNI, attNSN := ifcOwnerAtt.Spec.VNI, kosctlrutils.AttNSN(ifcOwnerAtt)
 			attState := ca.getAttState(attNSN)
@@ -350,17 +370,20 @@ func (ca *ConnectionAgent) handlePreExistingRemoteIfcs() error {
 			}
 			ca.setAttState(aLocalAttNSN, aLocalAttState)
 		}
-		_, firstLocalAttInVN := ca.updateVNState(aLocalAttState, aLocalAttVNI, aLocalAttNSN, ca.localNodeName)
+		_, firstLocalAttInVN := ca.updateVNState(aLocalAttState,
+			aLocalAttVNI,
+			aLocalAttNSN,
+			ca.localNodeName)
 		if firstLocalAttInVN {
 			glog.V(2).Infof("VN with ID %d became relevant: an Informer has been started", aLocalAttVNI)
 		}
 		aLocalAttState.vnStateVNI = aLocalAttVNI
 	}
 
-	// Read all remote ifcs, for each interface find the attachment with the same MAC in the
-	// cache for the remote attachments with the same VNI as the interface. If either the
-	// attachment or the cache are not found, delete the interface, bind it to the attachment
-	// otherwise.
+	// Read all remote ifcs, for each interface find the attachment with the same
+	// MAC in the cache for the remote attachments with the same VNI as the interface.
+	// If either the attachment or the cache are not found, delete the interface,
+	// bind it to the attachment otherwise.
 	allPreExistingRemoteIfcs, err := ca.netFabric.ListRemoteIfcs()
 	if err != nil {
 		return fmt.Errorf("Failed initial remote network interfaces list: %s", err.Error())
@@ -391,7 +414,9 @@ func (ca *ConnectionAgent) handlePreExistingRemoteIfcs() error {
 			ca.updateVNState(remAttState, ifcVNI, remAttNSN, ifcOwnerAtt.Spec.Node)
 			oldIfc, oldIfcExists := remAttState.ifc, remAttState.ifcIsValid
 			remAttState.vnStateVNI, remAttState.ifc, remAttState.ifcIsValid = ifcVNI, aPreExistingRemoteIfc, true
-			glog.V(3).Infof("Init: matched interface %#+v with remote attachment %#+v", aPreExistingRemoteIfc, ifcOwnerAtt)
+			glog.V(3).Infof("Init: matched interface %#+v with remote attachment %#+v",
+				aPreExistingRemoteIfc,
+				ifcOwnerAtt)
 			if oldIfcExists {
 				aPreExistingRemoteIfc = oldIfc
 			} else {
@@ -399,9 +424,11 @@ func (ca *ConnectionAgent) handlePreExistingRemoteIfcs() error {
 			}
 		}
 
-		// If we're here either there's no remote attachments cache associated with the interface vni (because there are
-		// no local attachments with that vni), or no remote attachment owning the interface was found, or the attachment
-		// owning the interface already has one. For all such cases we need to delete the interface.
+		// If we're here either there's no remote attachments cache associated with
+		// the interface vni (because there are no local attachments with that vni),
+		// or no remote attachment owning the interface was found, or the attachment
+		// owning the interface already has one. For all such cases we need to delete
+		// the interface.
 		for i, err := 1, ca.netFabric.DeleteRemoteIfc(aPreExistingRemoteIfc); err != nil; i++ {
 			glog.V(3).Infof("Init: deletion of orphan remote interface %#+v failed: %s. Attempt nbr. %d",
 				aPreExistingRemoteIfc,
@@ -458,20 +485,23 @@ func (ca *ConnectionAgent) processNetworkAttachment(attNSN k8stypes.NamespacedNa
 	return err
 }
 
-// getAttachment attempts to determine the univocal version of the NetworkAttachment with namespaced name attNSN. If it succeeds it
-// returns the attachment if it is found in an Informer cache or attDeleted set to true if it could not be found in any cache (e.g.
-// because it has been deleted). If the current attachment version cannot be determined without ambiguity, an error is returned.
-// An attachment is considered amibguous if it either has been seen with more than one vni in a remote attachments cache, or if
-// it is found both in the local attachments cache and a remote attachments cache.
+// getAttachment attempts to determine the univocal version of the NetworkAttachment
+// with namespaced name attNSN. If it succeeds it returns the attachment if it is found
+// in an Informer cache or attDeleted set to true if it could not be found in any cache
+// (e.g. because it has been deleted). If the current attachment version cannot be determined
+// without ambiguity, an error is returned. An attachment is considered amibguous if it either
+// has been seen with more than one vni in a remote attachments cache, or if it is found
+// both in the local attachments cache and a remote attachments cache.
 func (ca *ConnectionAgent) getAttachment(attNSN k8stypes.NamespacedName) (att *netv1a1.NetworkAttachment, attDeleted bool, err error) {
 	// Retrieve the VNIs where the attachment could be as a remote attachment
 	attSeenInVNIs := ca.getAttVNIs(attNSN)
 	nbrOfVNIs := len(attSeenInVNIs)
 	if nbrOfVNIs > 1 {
-		// If the attachment could be a remote one in more than one VNI, we return immediately. When
-		// a deletion notification handler removes the VNI with which it's seeing the attachment the
-		// attachment state will be "less ambiguous" (one less potential VNI) and a reference
-		// will be enqueued again triggering reconsideration of the attachment.
+		// If the attachment could be a remote one in more than one VNI, we
+		// return immediately. When a deletion notification handler removes the
+		// VNI with which it's seeing the attachment the attachment state will be
+		// "less ambiguous" (one less potential VNI) and a reference will be enqueued
+		// again triggering reconsideration of the attachment.
 		glog.V(4).Infof("Attachment %s has inconsistent state, found in the following VNIs: %#v",
 			attNSN,
 			attSeenInVNIs)
@@ -499,28 +529,33 @@ func (ca *ConnectionAgent) getAttachment(attNSN k8stypes.NamespacedName) (att *n
 	switch {
 	case (remAttCacheLookupErr != nil && !k8serrors.IsNotFound(remAttCacheLookupErr)) ||
 		(localAttCacheLookupErr != nil && !k8serrors.IsNotFound(localAttCacheLookupErr)):
-		// If we're here at least one of the two lookups failed. This should never happen. No point in retrying.
+		// If we're here at least one of the two lookups failed. This should
+		// never happen. No point in retrying.
 		glog.V(1).Infof("attempt to retrieve attachment %s with lister failed: %s. This should never happen, hence a reference to %s will not be requeued",
 			attNSN,
 			aggregateErrors("\n\t", remAttCacheLookupErr, localAttCacheLookupErr).Error(),
 			attNSN)
 	case attAsLocal != nil && attAsRemote != nil:
-		// If we're here the attachment has been found in both caches, hence it's state is
-		// ambiguous. It will be deleted by one of the caches soon, and this will cause a reference
-		// to be enqueued, so it will be processed again when the ambiguity has been resolved
-		// (assuming it has not been seen with other VNIs meanwhile).
+		// If we're here the attachment has been found in both caches, hence it's
+		// state is ambiguous. It will be deleted by one of the caches soon, and
+		// this will cause a reference to be enqueued, so it will be processed
+		// again when the ambiguity has been resolved (assuming it has not been
+		// seen with other VNIs meanwhile).
 		glog.V(4).Infof("Att %s has inconsistent state: found both in local atts cache and remote atts cache for VNI %d",
 			attNSN,
 			vni)
 	case attAsLocal != nil && attAsRemote == nil:
-		// If we're here the attachment was found only in the local cache: that's the univocal version of the attachment
+		// If we're here the attachment was found only in the local cache:
+		// that's the univocal version of the attachment
 		att = attAsLocal
 	case attAsLocal == nil && attAsRemote != nil:
-		// If we're here the attachment was found only in the remote attachments cache for its vni: that's the univocal version of the attachment
+		// If we're here the attachment was found only in the remote attachments
+		// cache for its vni: that's the univocal version of the attachment
 		att = attAsRemote
 	default:
-		// If we're here neither lookup could find the attachment: we assume the attachment has been
-		// deleted by both caches and is therefore no longer relevant to the connection agent
+		// If we're here neither lookup could find the attachment: we assume the
+		// attachment has been deleted by both caches and is therefore no longer
+		// relevant to the connection agent
 		attDeleted = true
 	}
 	return
@@ -645,21 +680,23 @@ func (ca *ConnectionAgent) updateVNState(attState *attachmentState,
 	if attState != nil {
 		oldAttVNI := attState.vnStateVNI
 		if oldAttVNI != attVNI {
-			// if we're here the attachment vni changed since the last time it was processed, hence
-			// we update the vnState associated with the old value of the vni to reflect the attachment
-			// departure.
+			// if we're here the attachment vni changed since the last time it
+			// was processed, hence we update the vnState associated with the
+			// old value of the vni to reflect the attachment departure.
 			ca.updateVNStateAfterAttDeparture(attNSN.Name, oldAttVNI)
 		}
 	}
 	return ca.updateVNStateForExistingAtt(attNSN, attNode == ca.localNodeName, attVNI)
 }
 
-// updateVNStateForExistingAtt adds the attachment to the vnState associated with its vni. If the attachment is
-// local and is the first one for its vni, the associated vnState is initialized (this entails starting the
-// remote attachments informer). If the attachment was the last local attachment in its vnState and has become
-// remote, the vnState for its vni is cleared (it's removed from the map storing the vnStates) and returned, so
-// that the caller can perform a clean up of the resources associated with the vnState (remote attachments
-// informer is stopped and references to the remote attachments are enqueued).
+// updateVNStateForExistingAtt adds the attachment to the vnState associated with
+// its vni. If the attachment is local and is the first one for its vni, the
+// associated vnState is initialized (this entails starting the remote attachments
+// informer). If the attachment was the last local attachment in its vnState and
+// has become remote, the vnState for its vni is cleared (it's removed from the
+// map storing the vnStates) and returned, so that the caller can perform a clean
+// up of the resources associated with the vnState (remote attachments informer
+// is stopped and references to the remote attachments are enqueued).
 func (ca *ConnectionAgent) updateVNStateForExistingAtt(attNSN k8stypes.NamespacedName,
 	attIsLocal bool,
 	vni uint32) (vnStateRet *vnState, firstLocalAttInVN bool) {
@@ -671,12 +708,14 @@ func (ca *ConnectionAgent) updateVNStateForExistingAtt(attNSN k8stypes.Namespace
 
 	vnState := ca.vniToVnState[vni]
 	if attIsLocal {
-		// If we're here the attachment is local. If the vnState for the attachment vni is missing it
-		// means that the attachment is the first local one for its vni, hence we initialize the vnState
-		// (this entails starting the remote attachments informer). We also add the attachment name to
-		// the local attachments in the virtual network and remove the attachment name from the remote
-		// attachments: this is needed in case we're here because of an update which did not change the
-		// vni but made the attachment transition from remote to local.
+		// If we're here the attachment is local. If the vnState for the
+		// attachment vni is missing it means that the attachment is the first
+		// local one for its vni, hence we initialize the vnState (this entails
+		// starting the remote attachments informer). We also add the attachment
+		// name to the local attachments in the virtual network and remove the
+		// attachment name from the remote attachments: this is needed in case
+		// we're here because of an update which did not change the vni but made
+		// the attachment transition from remote to local.
 		if vnState == nil {
 			vnState = ca.initVNState(vni, attNSN.Namespace)
 			ca.vniToVnState[vni] = vnState
@@ -685,15 +724,18 @@ func (ca *ConnectionAgent) updateVNStateForExistingAtt(attNSN k8stypes.Namespace
 		delete(vnState.remoteAtts, attName)
 		vnState.localAtts[attName] = struct{}{}
 	} else {
-		// If we're here the attachment is remote. If the vnState for the attachment vni is not missing
-		// (because the last local attachment with the same vni has been deleted), we remove the attachment
-		// name from the local attachments: this is needed in case we're here because of an update which
-		// did not change the vni but made the attachment transition from local to remote. After doing this,
-		// we check whether the local attachment we've removed was the last one for its vni. If that's the
-		// case (len(state.localAtts) == 0), the vni is no longer relevant to the connection agent, hence
-		// we return the vnState after removing it from the map storing all the vnStates so that the caller
-		// can perform the necessary clean up. If that's not the case, we add the attachment name to the remote
-		// attachments in the vnState.
+		// If we're here the attachment is remote. If the vnState for the
+		// attachment vni is not missing (because the last local attachment with
+		// the same vni has been deleted), we remove the attachment name from
+		// the local attachments: this is needed in case we're here because of
+		// an update which did not change the vni but made the attachment
+		// transition from local to remote. After doing this, we check whether
+		// the local attachment we've removed was the last one for its vni. If
+		// that's the case (len(state.localAtts) == 0), the vni is no longer
+		// relevant to the connection agent, hence we return the vnState after
+		// removing it from the map storing all the vnStates so that the caller
+		// can perform the necessary clean up. If that's not the case, we add the
+		// attachment name to the remote attachments in the vnState.
 		if vnState != nil {
 			vnState.remoteAtts[attName] = struct{}{}
 			delete(vnState.localAtts, attName)
@@ -713,9 +755,10 @@ func (ca *ConnectionAgent) updateVNStateAfterAttDeparture(attName string, vni ui
 	if vnState == nil {
 		return false
 	}
-	// If we're here attName was the last local attachment in the virtual network with id vni. Hence we
-	// stop the remote attachments informer and enqueue references to remote attachments in that virtual
-	// network, so that their interfaces can be deleted.
+	// If we're here attName was the last local attachment in the virtual network
+	// with id vni. Hence we stop the remote attachments informer and enqueue
+	// references to remote attachments in that virtual network, so that their
+	// interfaces can be deleted.
 	ca.stopRemoteAttInformerAndEnqueueRemoteAttRefs(vnState, vni)
 	return true
 }
@@ -729,7 +772,8 @@ func (ca *ConnectionAgent) createOrUpdateIfc(attState *attachmentState,
 		existingIfc, attHasIfc = attState.ifc, attState.ifcIsValid
 	}
 
-	newIfcNeedsToBeCreated := !attHasIfc || ifcNeedsUpdate(existingIfc, attGuestIP, attHostIP, attVNI)
+	newIfcNeedsToBeCreated := !attHasIfc ||
+		ifcNeedsUpdate(existingIfc, attGuestIP, attHostIP, attVNI)
 
 	err = ca.deleteIfc(existingIfc, attHasIfc && newIfcNeedsToBeCreated)
 	if err != nil {
@@ -794,9 +838,10 @@ func (ca *ConnectionAgent) setAttStatus(att *netv1a1.NetworkAttachment,
 	return updatedAtt, err
 }
 
-// removeAttFromVNState removes attName from the vnState associated with vni, both for local and remote
-// attachments. If attName is the last local attachment in the vnState, vnState is returned, so that
-// the caller can perform additional clean up (e.g. stopping the remote attachments informer).
+// removeAttFromVNState removes attName from the vnState associated with vni, both
+// for local and remote attachments. If attName is the last local attachment in
+// the vnState, vnState is returned, so that the caller can perform additional
+// clean up (e.g. stopping the remote attachments informer).
 func (ca *ConnectionAgent) removeAttFromVNState(attName string, vni uint32) *vnState {
 	ca.vniToVnStateMutex.Lock()
 	defer ca.vniToVnStateMutex.Unlock()
@@ -853,7 +898,9 @@ func (ca *ConnectionAgent) initVNState(vni uint32, namespace string) *vnState {
 
 func (ca *ConnectionAgent) onRemoteAttAdded(obj interface{}) {
 	att := obj.(*netv1a1.NetworkAttachment)
-	glog.V(5).Infof("Remote NetworkAttachments cache for VNI %d: notified of addition of %#+v", att.Spec.VNI, att)
+	glog.V(5).Infof("Remote NetworkAttachments cache for VNI %d: notified of addition of %#+v",
+		att.Spec.VNI,
+		att)
 	attNSN := kosctlrutils.AttNSN(att)
 	ca.addVNI(attNSN, att.Spec.VNI)
 	ca.queue.Add(attNSN)
@@ -862,14 +909,19 @@ func (ca *ConnectionAgent) onRemoteAttAdded(obj interface{}) {
 func (ca *ConnectionAgent) onRemoteAttUpdated(oldObj, newObj interface{}) {
 	oldAtt := oldObj.(*netv1a1.NetworkAttachment)
 	newAtt := newObj.(*netv1a1.NetworkAttachment)
-	glog.V(5).Infof("Remote NetworkAttachments cache for VNI %d: notified of update from %#+v to %#+v", newAtt.Spec.VNI, oldAtt, newAtt)
+	glog.V(5).Infof("Remote NetworkAttachments cache for VNI %d: notified of update from %#+v to %#+v",
+		newAtt.Spec.VNI,
+		oldAtt,
+		newAtt)
 	ca.queue.Add(kosctlrutils.AttNSN(newAtt))
 }
 
 func (ca *ConnectionAgent) onRemoteAttRemoved(obj interface{}) {
 	peeledObj := kosctlrutils.Peel(obj)
 	att := peeledObj.(*netv1a1.NetworkAttachment)
-	glog.V(5).Infof("Remote NetworkAttachments cache for VNI %d: notified of deletion of %#+v", att.Spec.VNI, att)
+	glog.V(5).Infof("Remote NetworkAttachments cache for VNI %d: notified of deletion of %#+v",
+		att.Spec.VNI,
+		att)
 	attNSN := kosctlrutils.AttNSN(att)
 	ca.removeVNI(attNSN, att.Spec.VNI)
 	ca.queue.Add(attNSN)
@@ -906,8 +958,9 @@ func (ca *ConnectionAgent) getAttVNIs(nsn k8stypes.NamespacedName) []uint32 {
 	if attSeenInVNIs == nil {
 		return nil
 	}
-	// ? This invocation has a runtime which is O(N), where N = (max_vni - min_vni). We're doing
-	// it while holding a mutex shared with the notif handlers. It could be bad for performance.
+	// ? This invocation has a runtime which is O(N), where N = (max_vni - min_vni).
+	// We're doing it while holding a mutex shared with the notif handlers. It
+	// could be bad for performance.
 	return attSeenInVNIs.Export()
 }
 
@@ -948,32 +1001,37 @@ func (ca *ConnectionAgent) localAttWithAnIPSelector() string {
 }
 
 // Return a string representing a field selector that matches NetworkAttachments
-// that run on a remote node on the Virtual Network identified by the given VNI and
-// have a virtual IP and the host IP field set.
+// that run on a remote node on the Virtual Network identified by the given VNI
+// and have a virtual IP and the host IP field set.
 func (ca *ConnectionAgent) remoteAttInVNWithVirtualIPHostIPAndIfcSelector(vni uint32) string {
-	// remoteAttSelector expresses the constraint that the NetworkAttachment runs on a remote node.
+	// remoteAttSelector expresses the constraint that the NetworkAttachment
+	// runs on a remote node.
 	remoteAttSelector := attNodeFieldName + notEqual + ca.localNodeName
 
-	// hostIPIsNotLocalSelector expresses the constraint that the NetworkAttachment status.hostIP is not equal
-	// to that of the current node. Without this selector, an update to the spec.Node field of a NetworkAttachment
-	// could lead to a creation notification for the attachment in a remote attachments cache, even if the attachment
-	// still has the host IP of the current node (status.hostIP is set with an update by the connection agent on the
-	// node of the attachment). This could result in the creation of a remote interface with the host IP of the local
-	// node.
+	// hostIPIsNotLocalSelector expresses the constraint that the NetworkAttachment
+	// status.hostIP is not equal to that of the current node. Without this selector,
+	// an update to the spec.Node field of a NetworkAttachment could lead to a
+	// creation notification for the attachment in a remote attachments cache,
+	// even if the attachment still has the host IP of the current node
+	// (status.hostIP is set with an update by the connection agent on the
+	// node of the attachment). This could result in the creation of a remote
+	// interface with the host IP of the local node.
 	hostIPIsNotLocalSelector := attHostIPFieldName + notEqual + ca.hostIP.String()
 
-	// attWithAnIPSelector, attWithHostIPSelector and attWithIfcSelector express the constraints that the
-	// NetworkAttachment has the fields storing virtual IP, host IP and ifc name sets, by saying that such
-	// fields must not be equal to the empty string.
+	// attWithAnIPSelector, attWithHostIPSelector and attWithIfcSelector express
+	// the constraints that the NetworkAttachment has the fields storing virtual
+	// IP, host IP and ifc name sets, by saying that such fields must not be equal
+	// to the empty string.
 	attWithAnIPSelector := attIPFieldName + notEqual
 	attWithHostIPSelector := attHostIPFieldName + notEqual
 	attWithIfcSelector := attIfcFieldName + notEqual
 
-	// attInSpecificVNSelector expresses the constraint that the NetworkAttachment is in the Virtual
-	// Network identified by vni.
+	// attInSpecificVNSelector expresses the constraint that the NetworkAttachment
+	// is in the Virtual Network identified by vni.
 	attInSpecificVNSelector := attVNIFieldName + equal + fmt.Sprint(vni)
 
-	// Build and return a selector which is a logical AND between all the selectors defined above.
+	// Build and return a selector which is a logical AND between all the selectors
+	// defined above.
 	allSelectors := []string{remoteAttSelector,
 		hostIPIsNotLocalSelector,
 		attWithAnIPSelector,
@@ -1031,8 +1089,8 @@ func createAttsv1a1Informer(kcs *kosclientset.Clientset,
 	return netv1a1Ifc.NetworkAttachments()
 }
 
-// attachmentMACAddr is an Index function that computes the MAC address of a NetworkAttachment.
-// Used to map pre-existing interfaces with attachments at start up.
+// attachmentMACAddr is an Index function that computes the MAC address of a
+// NetworkAttachment. Used to map pre-existing interfaces with attachments at start up.
 func attachmentMACAddr(obj interface{}) ([]string, error) {
 	att := obj.(*netv1a1.NetworkAttachment)
 	return []string{generateMACAddr(att.Spec.VNI, gonet.ParseIP(att.Status.IPv4)).String()}, nil
