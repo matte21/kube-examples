@@ -590,7 +590,7 @@ func (ca *ConnectionAgent) processExistingAtt(att *netv1a1.NetworkAttachment) er
 		// If we're here att is currently remote but was previously the last local
 		// attachment in its vni. Thus, we act as if the last local attachment
 		// in the vn was deleted
-		ca.stopRemoteAttInformerAndEnqueueRemoteAttRefs(vnState, attVNI)
+		ca.clearVNResources(vnState, attVNI)
 		return nil
 	}
 
@@ -765,7 +765,7 @@ func (ca *ConnectionAgent) updateVNStateAfterAttDeparture(attName string, vni ui
 	// with id vni. Hence we stop the remote attachments informer and enqueue
 	// references to remote attachments in that virtual network, so that their
 	// interfaces can be deleted.
-	ca.stopRemoteAttInformerAndEnqueueRemoteAttRefs(vnState, vni)
+	ca.clearVNResources(vnState, vni)
 	return true
 }
 
@@ -860,9 +860,10 @@ func (ca *ConnectionAgent) removeAttFromVNState(attName string, vni uint32) *vnS
 	return nil
 }
 
-func (ca *ConnectionAgent) stopRemoteAttInformerAndEnqueueRemoteAttRefs(vnState *vnState,
-	vni uint32) {
-
+// clearVNResources stops the informer on remote attachments on the virtual
+// network and enqueues references to such attachments so that their interfaces
+// can be deleted.
+func (ca *ConnectionAgent) clearVNResources(vnState *vnState, vni uint32) {
 	close(vnState.remoteAttsInformerStopCh)
 	for aRemoteAttName := range vnState.remoteAtts {
 		aRemoteAttNSN := k8stypes.NamespacedName{
