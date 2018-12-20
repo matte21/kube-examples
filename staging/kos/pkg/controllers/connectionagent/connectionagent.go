@@ -43,8 +43,6 @@ import (
 	koslisterv1a1 "k8s.io/examples/staging/kos/pkg/client/listers/network/v1alpha1"
 	kosctlrutils "k8s.io/examples/staging/kos/pkg/controllers/utils"
 	netfabric "k8s.io/examples/staging/kos/pkg/networkfabric"
-
-	"k8s.io/examples/staging/kos/pkg/uint32set"
 )
 
 const (
@@ -127,6 +125,39 @@ type attachmentState struct {
 	ifc        netfabric.NetworkInterface
 }
 
+// attVNIsIntel represents the "intel" on the attachment current location (in
+// terms of virtual network). It stores the VNIs with whom an attachment has been
+// seen by the notification handlers on remote attachments.
+// It's NOT THREAD-SAFE.
+type attVNIsIntel struct {
+	onlyVNI uint32
+	vnis    map[uint32]struct{}
+}
+
+func newAttVNIsIntel() *attVNIsIntel {
+	return &attVNIsIntel{
+		vnis: make(map[uint32]struct{}, 1),
+	}
+}
+
+func (avi *attVNIsIntel) addVNI(vni uint32) {
+	avi.vnis[vni] = struct{}{}
+	if len(avi.vnis) == 1 {
+		avi.onlyVNI = vni
+	}
+}
+
+func (avi *attVNIsIntel) removeVNI(vni uint32) {
+	delete(avi.vnis, vni)
+	if len(avi.vnis) == 1 {
+		avi.onlyVNI = vni
+	}
+}
+
+func (avi *attVNIsIntel) getIntel() (uint32, int) {
+	return avi.onlyVNI, len(avi.vnis)
+}
+
 // ConnectionAgent represents a K8S controller which runs on every node of the
 // cluster and eagerly maintains up-to-date the mapping between virtual IPs and
 // physical IPs for every relevant NetworkAttachment. A NetworkAttachment is
@@ -180,8 +211,8 @@ type ConnectionAgent struct {
 	// reference to be requeued with a delay, and hopefully by the time it is
 	// dequeued again the ambiguity as for the current attachment state has been
 	// resolved. Accessed only while holding nsnToVNIsMutex.
-	nsnToVNIsMutex sync.RWMutex
-	nsnToVNIs      map[k8stypes.NamespacedName]*uint32set.HashUInt32Set
+	nsnToVNIsIntelMutex sync.RWMutex
+	nsnToVNIsIntel      map[k8stypes.NamespacedName]*attVNIsIntel
 }
 
 // NewConnectionAgent returns a deactivated instance of a ConnectionAgent (neither
@@ -194,16 +225,16 @@ func NewConnectionAgent(localNodeName string,
 	netFabric netfabric.Interface) *ConnectionAgent {
 
 	return &ConnectionAgent{
-		localNodeName: localNodeName,
-		hostIP:        hostIP,
-		kcs:           kcs,
-		netv1a1Ifc:    kcs.NetworkV1alpha1(),
-		queue:         queue,
-		workers:       workers,
-		netFabric:     netFabric,
-		vniToVnState:  make(map[uint32]*vnState),
-		nsnToAttState: make(map[k8stypes.NamespacedName]*attachmentState),
-		nsnToVNIs:     make(map[k8stypes.NamespacedName]*uint32set.HashUInt32Set),
+		localNodeName:  localNodeName,
+		hostIP:         hostIP,
+		kcs:            kcs,
+		netv1a1Ifc:     kcs.NetworkV1alpha1(),
+		queue:          queue,
+		workers:        workers,
+		netFabric:      netFabric,
+		vniToVnState:   make(map[uint32]*vnState),
+		nsnToAttState:  make(map[k8stypes.NamespacedName]*attachmentState),
+		nsnToVNIsIntel: make(map[k8stypes.NamespacedName]*attVNIsIntel),
 	}
 }
 
@@ -493,30 +524,28 @@ func (ca *ConnectionAgent) processNetworkAttachment(attNSN k8stypes.NamespacedNa
 // one vni in a remote attachments cache, or if it is found both in the local
 // attachments cache and a remote attachments cache.
 func (ca *ConnectionAgent) getAttachment(attNSN k8stypes.NamespacedName) (*netv1a1.NetworkAttachment, bool, error) {
-	// Retrieve the VNIs where the attachment could be as a remote attachment
-	attSeenInVNIs := ca.getAttVNIs(attNSN)
-	nbrOfVNIs := len(attSeenInVNIs)
+	// Retrieve the number of VN(I)s where the attachment could be as a remote
+	// attachment, or, if it could be only in one VN(I), return that VNI.
+	vni, nbrOfVNIs := ca.getAttVNIs(attNSN)
 	if nbrOfVNIs > 1 {
 		// If the attachment could be a remote one in more than one VNI, we
 		// return immediately. When a deletion notification handler removes the
 		// VNI with which it's seeing the attachment the attachment state will be
 		// "less ambiguous" (one less potential VNI) and a reference will be enqueued
 		// again triggering reconsideration of the attachment.
-		glog.V(4).Infof("Attachment %s has inconsistent state, found in the following VNIs: %#v",
+		glog.V(4).Infof("Attachment %s has inconsistent state, found in %d VN(I)s",
 			attNSN,
-			attSeenInVNIs)
+			nbrOfVNIs)
 		return nil, false, nil
 	}
 
 	// If the attachment has been seen in exactly one VNI lookup it up in
 	// the remote attachments cache for the VNI with which it's been seen
 	var (
-		vni                  uint32
 		attAsRemote          *netv1a1.NetworkAttachment
 		remAttCacheLookupErr error
 	)
 	if nbrOfVNIs == 1 {
-		vni := attSeenInVNIs[0]
 		remoteAttsLister := ca.getRemoteAttListerForVNI(vni)
 		if remoteAttsLister != nil {
 			attAsRemote, remAttCacheLookupErr = remoteAttsLister.Get(attNSN.Name)
@@ -934,40 +963,38 @@ func (ca *ConnectionAgent) onRemoteAttRemoved(obj interface{}) {
 }
 
 func (ca *ConnectionAgent) addVNI(nsn k8stypes.NamespacedName, vni uint32) {
-	ca.nsnToVNIsMutex.Lock()
-	defer ca.nsnToVNIsMutex.Unlock()
-	attSeenInVNIs := ca.nsnToVNIs[nsn]
-	if attSeenInVNIs == nil {
-		attSeenInVNIs = uint32set.NewHashUInt32Set()
-		ca.nsnToVNIs[nsn] = attSeenInVNIs
+	ca.nsnToVNIsIntelMutex.Lock()
+	defer ca.nsnToVNIsIntelMutex.Unlock()
+	attVNIsIntel := ca.nsnToVNIsIntel[nsn]
+	if attVNIsIntel == nil {
+		attVNIsIntel = newAttVNIsIntel()
+		ca.nsnToVNIsIntel[nsn] = attVNIsIntel
 	}
-	attSeenInVNIs.Add(vni)
+	attVNIsIntel.addVNI(vni)
 }
 
 func (ca *ConnectionAgent) removeVNI(nsn k8stypes.NamespacedName, vni uint32) {
-	ca.nsnToVNIsMutex.Lock()
-	defer ca.nsnToVNIsMutex.Unlock()
-	attSeenInVNIs := ca.nsnToVNIs[nsn]
-	if attSeenInVNIs == nil {
+	ca.nsnToVNIsIntelMutex.Lock()
+	defer ca.nsnToVNIsIntelMutex.Unlock()
+	attVNIsIntel := ca.nsnToVNIsIntel[nsn]
+	if attVNIsIntel == nil {
 		return
 	}
-	attSeenInVNIs.Remove(vni)
-	if attSeenInVNIs.IsEmpty() {
-		delete(ca.nsnToVNIs, nsn)
+	attVNIsIntel.removeVNI(vni)
+	if _, nbrOfVNIs := attVNIsIntel.getIntel(); nbrOfVNIs == 0 {
+		delete(ca.nsnToVNIsIntel, nsn)
 	}
 }
 
-func (ca *ConnectionAgent) getAttVNIs(nsn k8stypes.NamespacedName) []uint32 {
-	ca.nsnToVNIsMutex.RLock()
-	defer ca.nsnToVNIsMutex.RUnlock()
-	attSeenInVNIs := ca.nsnToVNIs[nsn]
-	if attSeenInVNIs == nil {
-		return nil
+func (ca *ConnectionAgent) getAttVNIs(nsn k8stypes.NamespacedName) (onlyVNI uint32, nbrOfVNIs int) {
+	ca.nsnToVNIsIntelMutex.RLock()
+	defer ca.nsnToVNIsIntelMutex.RUnlock()
+	attVNIsIntel := ca.nsnToVNIsIntel[nsn]
+	if attVNIsIntel == nil {
+		return
 	}
-	// ? This invocation has a runtime which is O(N), where N = (max_vni - min_vni).
-	// We're doing it while holding a mutex shared with the notif handlers. It
-	// could be bad for performance.
-	return attSeenInVNIs.Export()
+	onlyVNI, nbrOfVNIs = attVNIsIntel.getIntel()
+	return
 }
 
 func (ca *ConnectionAgent) getRemoteAttListerForVNI(vni uint32) koslisterv1a1.NetworkAttachmentNamespaceLister {
