@@ -125,39 +125,6 @@ type attachmentState struct {
 	ifc        netfabric.NetworkInterface
 }
 
-// attVNIsIntel represents the "intel" on the attachment current location (in
-// terms of virtual network). It stores the VNIs with whom an attachment has been
-// seen by the notification handlers on remote attachments.
-// It's NOT THREAD-SAFE.
-type attVNIsIntel struct {
-	onlyVNI uint32
-	vnis    map[uint32]struct{}
-}
-
-func newAttVNIsIntel() *attVNIsIntel {
-	return &attVNIsIntel{
-		vnis: make(map[uint32]struct{}, 1),
-	}
-}
-
-func (avi *attVNIsIntel) addVNI(vni uint32) {
-	avi.vnis[vni] = struct{}{}
-	if len(avi.vnis) == 1 {
-		avi.onlyVNI = vni
-	}
-}
-
-func (avi *attVNIsIntel) removeVNI(vni uint32) {
-	delete(avi.vnis, vni)
-	if len(avi.vnis) == 1 {
-		avi.onlyVNI = vni
-	}
-}
-
-func (avi *attVNIsIntel) getIntel() (uint32, int) {
-	return avi.onlyVNI, len(avi.vnis)
-}
-
 // ConnectionAgent represents a K8S controller which runs on every node of the
 // cluster and eagerly maintains up-to-date the mapping between virtual IPs and
 // physical IPs for every relevant NetworkAttachment. A NetworkAttachment is
@@ -200,19 +167,20 @@ type ConnectionAgent struct {
 	nsnToAttStateMutex sync.RWMutex
 	nsnToAttState      map[k8stypes.NamespacedName]*attachmentState
 
-	// nsnToVNIs maps attachments (both local and remote) to namespaced names
-	// and set of vnis where the attachment has been seen. It is accessed by the
+	// nsnToVNIs maps attachments (both local and remote) namespaced names
+	// to set of vnis where the attachments have been seen. It is accessed by the
 	// notification handlers for remote attachments, which add/remove the vni
 	// with which they see the attachment upon creation/deletion of the attachment
 	// respectively. When a worker processes an attachment reference, it reads
 	// from nsnToVNIs the vnis with which the attachment has been seen. If there's
 	// more than one vni, the current state of the attachment is ambiguous and
-	// the worker stops the processing and returns an error. This causes the
-	// reference to be requeued with a delay, and hopefully by the time it is
-	// dequeued again the ambiguity as for the current attachment state has been
-	// resolved. Accessed only while holding nsnToVNIsMutex.
-	nsnToVNIsIntelMutex sync.RWMutex
-	nsnToVNIsIntel      map[k8stypes.NamespacedName]*attVNIsIntel
+	// the worker stops the processing. The deletion notification handler for one
+	// of the VNIs of the attachment will cause the reference to be requeued
+	// and hopefully by the time it is dequeued again the ambiguity as for the
+	// current attachment state has been resolved. Accessed only while holding
+	// nsnToVNIsMutex.
+	nsnToVNIsMutex sync.RWMutex
+	nsnToVNIs      map[k8stypes.NamespacedName]map[uint32]struct{}
 }
 
 // NewConnectionAgent returns a deactivated instance of a ConnectionAgent (neither
@@ -225,16 +193,16 @@ func NewConnectionAgent(localNodeName string,
 	netFabric netfabric.Interface) *ConnectionAgent {
 
 	return &ConnectionAgent{
-		localNodeName:  localNodeName,
-		hostIP:         hostIP,
-		kcs:            kcs,
-		netv1a1Ifc:     kcs.NetworkV1alpha1(),
-		queue:          queue,
-		workers:        workers,
-		netFabric:      netFabric,
-		vniToVnState:   make(map[uint32]*vnState),
-		nsnToAttState:  make(map[k8stypes.NamespacedName]*attachmentState),
-		nsnToVNIsIntel: make(map[k8stypes.NamespacedName]*attVNIsIntel),
+		localNodeName: localNodeName,
+		hostIP:        hostIP,
+		kcs:           kcs,
+		netv1a1Ifc:    kcs.NetworkV1alpha1(),
+		queue:         queue,
+		workers:       workers,
+		netFabric:     netFabric,
+		vniToVnState:  make(map[uint32]*vnState),
+		nsnToAttState: make(map[k8stypes.NamespacedName]*attachmentState),
+		nsnToVNIs:     make(map[k8stypes.NamespacedName]map[uint32]struct{}),
 	}
 }
 
@@ -960,37 +928,38 @@ func (ca *ConnectionAgent) onRemoteAttRemoved(obj interface{}) {
 }
 
 func (ca *ConnectionAgent) addVNI(nsn k8stypes.NamespacedName, vni uint32) {
-	ca.nsnToVNIsIntelMutex.Lock()
-	defer ca.nsnToVNIsIntelMutex.Unlock()
-	attVNIsIntel := ca.nsnToVNIsIntel[nsn]
-	if attVNIsIntel == nil {
-		attVNIsIntel = newAttVNIsIntel()
-		ca.nsnToVNIsIntel[nsn] = attVNIsIntel
+	ca.nsnToVNIsMutex.Lock()
+	defer ca.nsnToVNIsMutex.Unlock()
+	attVNIs := ca.nsnToVNIs[nsn]
+	if attVNIs == nil {
+		attVNIs = make(map[uint32]struct{})
+		ca.nsnToVNIs[nsn] = attVNIs
 	}
-	attVNIsIntel.addVNI(vni)
+	attVNIs[vni] = struct{}{}
 }
 
 func (ca *ConnectionAgent) removeVNI(nsn k8stypes.NamespacedName, vni uint32) {
-	ca.nsnToVNIsIntelMutex.Lock()
-	defer ca.nsnToVNIsIntelMutex.Unlock()
-	attVNIsIntel := ca.nsnToVNIsIntel[nsn]
-	if attVNIsIntel == nil {
+	ca.nsnToVNIsMutex.Lock()
+	defer ca.nsnToVNIsMutex.Unlock()
+	attVNIs := ca.nsnToVNIs[nsn]
+	if attVNIs == nil {
 		return
 	}
-	attVNIsIntel.removeVNI(vni)
-	if _, nbrOfVNIs := attVNIsIntel.getIntel(); nbrOfVNIs == 0 {
-		delete(ca.nsnToVNIsIntel, nsn)
+	delete(attVNIs, vni)
+	if len(attVNIs) == 0 {
+		delete(ca.nsnToVNIs, nsn)
 	}
 }
 
 func (ca *ConnectionAgent) getAttVNIs(nsn k8stypes.NamespacedName) (onlyVNI uint32, nbrOfVNIs int) {
-	ca.nsnToVNIsIntelMutex.RLock()
-	defer ca.nsnToVNIsIntelMutex.RUnlock()
-	attVNIsIntel := ca.nsnToVNIsIntel[nsn]
-	if attVNIsIntel == nil {
-		return
+	ca.nsnToVNIsMutex.RLock()
+	defer ca.nsnToVNIsMutex.RUnlock()
+	attVNIs := ca.nsnToVNIs[nsn]
+	nbrOfVNIs = len(attVNIs)
+	if nbrOfVNIs == 1 {
+		for onlyVNI = range attVNIs {
+		}
 	}
-	onlyVNI, nbrOfVNIs = attVNIsIntel.getIntel()
 	return
 }
 
