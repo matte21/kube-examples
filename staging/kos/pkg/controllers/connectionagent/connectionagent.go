@@ -356,10 +356,7 @@ func (ca *ConnectionAgent) handlePreExistingLocalIfcs() error {
 				}
 				ca.setAttState(attNSN, attState)
 			}
-			_, firstLocalAttInVN := ca.updateVNState(attState, attVNI, attNSN, ifcOwnerAtt.Spec.Node)
-			if firstLocalAttInVN {
-				glog.V(2).Infof("VN with ID %d became relevant: an Informer has been started", attVNI)
-			}
+			ca.updateVNState(attState, attVNI, attNSN, ifcOwnerAtt.Spec.Node)
 			oldIfc, oldIfcExists := attState.ifc, attState.ifcIsValid
 			attState.vnStateVNI, attState.ifc, attState.ifcIsValid = attVNI, aPreExistingLocalIfc, true
 			glog.V(3).Infof("Matched interface %#+v with local attachment %#+v", aPreExistingLocalIfc, ifcOwnerAtt)
@@ -400,13 +397,10 @@ func (ca *ConnectionAgent) handlePreExistingRemoteIfcs() error {
 			}
 			ca.setAttState(aLocalAttNSN, aLocalAttState)
 		}
-		_, firstLocalAttInVN := ca.updateVNState(aLocalAttState,
+		ca.updateVNState(aLocalAttState,
 			aLocalAttVNI,
 			aLocalAttNSN,
 			ca.localNodeName)
-		if firstLocalAttInVN {
-			glog.V(2).Infof("VN with ID %d became relevant: an Informer has been started", aLocalAttVNI)
-		}
 		aLocalAttState.vnStateVNI = aLocalAttVNI
 	}
 
@@ -517,7 +511,7 @@ func (ca *ConnectionAgent) processNetworkAttachment(attNSN k8stypes.NamespacedNa
 
 // getAttachment attempts to determine the univocal version of the NetworkAttachment
 // with namespaced name attNSN. If it succeeds it returns the attachment if it is
-// found in an Informer cache or attDeleted set to true if it could not be found
+// found in an Informer cache or a boolean flag set to true if it could not be found
 // in any cache (e.g. because it has been deleted). If the current attachment
 // version cannot be determined without ambiguity, an error is returned. An
 // attachment is considered amibguous if it either has been seen with more than
@@ -611,10 +605,7 @@ func (ca *ConnectionAgent) processExistingAtt(att *netv1a1.NetworkAttachment) er
 	// could also entail removing the attachment from the vnState associated with
 	// its old vni if the vni has changed.
 	var err error
-	vnState, firstLocalAttInVN := ca.updateVNState(attState, attVNI, attNSN, attNode)
-	if firstLocalAttInVN {
-		glog.V(2).Infof("VN with ID %d became relevant: an Informer has been started", attVNI)
-	}
+	vnState := ca.updateVNState(attState, attVNI, attNSN, attNode)
 	if vnState != nil {
 		// If we're here att is currently remote but was previously the last local
 		// attachment in its vni. Thus, we act as if the last local attachment
@@ -710,7 +701,7 @@ func (ca *ConnectionAgent) removeAttState(attNSN k8stypes.NamespacedName) {
 func (ca *ConnectionAgent) updateVNState(attState *attachmentState,
 	attVNI uint32,
 	attNSN k8stypes.NamespacedName,
-	attNode string) (*vnState, bool) {
+	attNode string) *vnState {
 
 	if attState != nil {
 		oldAttVNI := attState.vnStateVNI
@@ -734,12 +725,18 @@ func (ca *ConnectionAgent) updateVNState(attState *attachmentState,
 // is stopped and references to the remote attachments are enqueued).
 func (ca *ConnectionAgent) updateVNStateForExistingAtt(attNSN k8stypes.NamespacedName,
 	attIsLocal bool,
-	vni uint32) (vnStateRet *vnState, firstLocalAttInVN bool) {
+	vni uint32) (vnStateRet *vnState) {
 
 	attName := attNSN.Name
+	firstLocalAttInVN := false
 
 	ca.vniToVnStateMutex.Lock()
-	defer ca.vniToVnStateMutex.Unlock()
+	defer func() {
+		ca.vniToVnStateMutex.Unlock()
+		if firstLocalAttInVN {
+			glog.V(2).Infof("VN with ID %d became relevant: an Informer has been started", vni)
+		}
+	}()
 
 	vnState := ca.vniToVnState[vni]
 	if attIsLocal {
