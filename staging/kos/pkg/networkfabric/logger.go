@@ -90,10 +90,8 @@ func (l *logger) ListRemoteIfcs() ([]NetworkInterface, error) {
 }
 
 func init() {
-	registerFactory(name, func() Interface {
-		return &logger{
-			localIfcs:  make(map[string]NetworkInterface),
-			remoteIfcs: make(map[string]NetworkInterface),
-		}
+	registerFabric(name, &logger{
+		localIfcs:  make(map[string]NetworkInterface),
+		remoteIfcs: make(map[string]NetworkInterface),
 	})
 }

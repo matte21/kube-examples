@@ -80,7 +80,7 @@ func main() {
 		os.Exit(3)
 	}
 
-	netFabric, err := netfabric.NewNetFabricForName(netFabricName)
+	netFabric, err := netfabric.NetFabricForName(netFabricName)
 	if err != nil {
 		glog.Errorf("network fabric not found: %s\n", err.Error())
 		os.Exit(4)
