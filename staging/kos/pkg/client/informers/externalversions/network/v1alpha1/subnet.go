@@ -25,7 +25,7 @@ import (
 	runtime "k8s.io/apimachinery/pkg/runtime"
 	watch "k8s.io/apimachinery/pkg/watch"
 	cache "k8s.io/client-go/tools/cache"
-	network_v1alpha1 "k8s.io/examples/staging/kos/pkg/apis/network/v1alpha1"
+	networkv1alpha1 "k8s.io/examples/staging/kos/pkg/apis/network/v1alpha1"
 	versioned "k8s.io/examples/staging/kos/pkg/client/clientset/versioned"
 	internalinterfaces "k8s.io/examples/staging/kos/pkg/client/informers/externalversions/internalinterfaces"
 	v1alpha1 "k8s.io/examples/staging/kos/pkg/client/listers/network/v1alpha1"
@@ -70,7 +70,7 @@ func NewFilteredSubnetInformer(client versioned.Interface, namespace string, res
 				return client.NetworkV1alpha1().Subnets(namespace).Watch(options)
 			},
 		},
-		&network_v1alpha1.Subnet{},
+		&networkv1alpha1.Subnet{},
 		resyncPeriod,
 		indexers,
 	)
@@ -81,7 +81,7 @@ func (f *subnetInformer) defaultInformer(client versioned.Interface, resyncPerio
 }
 
 func (f *subnetInformer) Informer() cache.SharedIndexInformer {
-	return f.factory.InformerFor(&network_v1alpha1.Subnet{}, f.defaultInformer)
+	return f.factory.InformerFor(&networkv1alpha1.Subnet{}, f.defaultInformer)
 }
 
 func (f *subnetInformer) Lister() v1alpha1.SubnetLister {

@@ -47,16 +47,20 @@ type NetworkAttachmentStatus struct {
 	// IP address, or the empty string when there is no address
 	LockUID string `json:"lockUID,omitempty" protobuf:"bytes,2,opt,name=lockUID"`
 
+	// LockVNI is the VNI where the IPLock object holding this attachment's
+	// IP address is valid, or the empty string when there is no address
+	LockVNI uint32 `json:"lockVNI,omitempty" protobuf:"bytes,3,opt,name=lockVNI"`
+
 	// IPv4 is non-empty when an address has been assigned
-	IPv4 string `json:"ipv4,omitempty" protobuf:"bytes,3,opt,name=ipv4"`
+	IPv4 string `json:"ipv4,omitempty" protobuf:"bytes,4,opt,name=ipv4"`
 
 	// IfcName is the name of the network interface that implements this
 	// attachment on its node, or the empty string to indicate no
 	// implementation.
-	IfcName string `json:"ifcName,omitempty" protobuf:"bytes,4,opt,name=ifcname"`
+	IfcName string `json:"ifcName,omitempty" protobuf:"bytes,5,opt,name=ifcname"`
 
 	// HostIP is the IP address of the node the attachment is bound to.
-	HostIP string `json:"hostIP,omitempty" protobuf:"bytes,5,opt,name=hostIP"`
+	HostIP string `json:"hostIP,omitempty" protobuf:"bytes,6,opt,name=hostIP"`
 }
 
 type NetworkAttachmentErrors struct {
