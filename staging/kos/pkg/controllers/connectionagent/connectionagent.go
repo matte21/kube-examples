@@ -534,13 +534,28 @@ func (ca *ConnectionAgent) getAttachment(attNSN k8stypes.NamespacedName) (*netv1
 }
 
 func (ca *ConnectionAgent) processExistingAtt(att *netv1a1.NetworkAttachment) error {
-	attNSN, attVNI, attNode := kosctlrutils.AttNSN(att), att.Spec.VNI, att.Spec.Node
+	attNSN, attVNI, attLockVNI := kosctlrutils.AttNSN(att), att.Spec.VNI, att.Status.LockVNI
+	if attVNI != attLockVNI {
+		// If we're here the attachment Lock has validity in a different Virtual
+		// Network wrt to the one where it is now (whose ID is Spec.VNI). Hence its
+		// IP address is not valid, and we stop processing. When the attachment gets
+		// a new IP, valid in its latest virtual network, a new reference will be
+		// enqueued and processed to completion.
+		glog.V(4).Infof("Attachment %s has VNI %d but its IP is valid in VNI %d only, "+
+			"processing will stop.",
+			attNSN,
+			attVNI,
+			attLockVNI,
+		)
+		return nil
+	}
 
 	// Retrieve the last seen attachment state, which stores the attachment network
 	// interface if it was created, and the vni with which it was processed last time
 	// (this field is used to update the old vnState in case the current version of the
 	// attachment has a different vni).
 	attState := ca.getAttState(attNSN)
+	attNode := att.Spec.Node
 
 	// Update the vnState associated with the attachment. This typically involves
 	// adding the attachment to the vnState associated to its vni (and initializing
@@ -1085,7 +1100,7 @@ func createAttsv1a1Informer(kcs *kosclientset.Clientset,
 // start up.
 func attachmentMACAddr(obj interface{}) ([]string, error) {
 	att := obj.(*netv1a1.NetworkAttachment)
-	return []string{generateMACAddr(att.Spec.VNI, gonet.ParseIP(att.Status.IPv4)).String()}, nil
+	return []string{generateMACAddr(att.Status.LockVNI, gonet.ParseIP(att.Status.IPv4)).String()}, nil
 }
 
 func generateIfcName(macAddr gonet.HardwareAddr) string {
