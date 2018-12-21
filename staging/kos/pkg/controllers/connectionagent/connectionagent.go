@@ -488,7 +488,7 @@ func (ca *ConnectionAgent) processNetworkAttachment(attNSN k8stypes.NamespacedNa
 func (ca *ConnectionAgent) getAttachment(attNSN k8stypes.NamespacedName) (*netv1a1.NetworkAttachment, bool, error) {
 	// Retrieve the number of VN(I)s where the attachment could be as a remote
 	// attachment, or, if it could be only in one VN(I), return that VNI.
-	vni, nbrOfVNIs := ca.getAttVNIs(attNSN)
+	vni, nbrOfVNIs := ca.getAttVNI(attNSN)
 	if nbrOfVNIs > 1 {
 		// If the attachment could be a remote one in more than one VNI, we
 		// return immediately. When a deletion notification handler removes the
@@ -951,7 +951,7 @@ func (ca *ConnectionAgent) removeVNI(nsn k8stypes.NamespacedName, vni uint32) {
 	}
 }
 
-func (ca *ConnectionAgent) getAttVNIs(nsn k8stypes.NamespacedName) (onlyVNI uint32, nbrOfVNIs int) {
+func (ca *ConnectionAgent) getAttVNI(nsn k8stypes.NamespacedName) (onlyVNI uint32, nbrOfVNIs int) {
 	ca.nsnToVNIsMutex.RLock()
 	defer ca.nsnToVNIsMutex.RUnlock()
 	attVNIs := ca.nsnToVNIs[nsn]
