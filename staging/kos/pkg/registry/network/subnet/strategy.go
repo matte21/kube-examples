@@ -83,9 +83,8 @@ func (*subnetStrategy) NamespaceScoped() bool {
 }
 
 func (*subnetStrategy) PrepareForCreate(ctx genericapirequest.Context, obj runtime.Object) {
-	if subnet, isSubnet := obj.(*network.Subnet); isSubnet {
-		subnet.Status = network.SubnetStatus{}
-	}
+	subnet := obj.(*network.Subnet)
+	subnet.Status = network.SubnetStatus{}
 }
 
 func (*subnetStrategy) PrepareForUpdate(ctx genericapirequest.Context, obj, old runtime.Object) {
@@ -94,15 +93,7 @@ func (*subnetStrategy) PrepareForUpdate(ctx genericapirequest.Context, obj, old 
 func (s *subnetStrategy) Validate(ctx genericapirequest.Context, obj runtime.Object) field.ErrorList {
 	var validationErrors field.ErrorList
 
-	thisSubnet, isSubnet := obj.(*network.Subnet)
-	if !isSubnet {
-		// If we're here it's impossible to continue validating the object because it's not a subnet, thus
-		// we return immediately.
-		// ? Consider adding a more informative error message?
-		// ? Consider invoking panic() instead. This is a severe bug that should never happen.
-		validationErrors = append(validationErrors, field.InternalError(nil, fmt.Errorf("server internal error, try again later")))
-		return validationErrors
-	}
+	thisSubnet := obj.(*network.Subnet)
 
 	vniRangeErrors := s.checkVNIRange(thisSubnet)
 	cidrFormatErrors := s.checkCIDRFormat(thisSubnet)
@@ -161,20 +152,9 @@ func (*subnetStrategy) Canonicalize(obj runtime.Object) {
 }
 
 func (s *subnetStrategy) ValidateUpdate(ctx genericapirequest.Context, obj, old runtime.Object) field.ErrorList {
-	if _, isSubnet := old.(*network.Subnet); !isSubnet {
-		// ? Consider adding a more informative error message?
-		// ? Consider invoking panic() instead. This is a severe bug that should never happen.
-		return field.ErrorList{field.InternalError(nil, fmt.Errorf("server internal error, try again later"))}
-	}
 	return s.Validate(ctx, obj)
 }
 
-// ! These two consts harm code reusability, because they're set to the OVS-specific values.
-// ! OVS is the low-level networking implementation used for this project, but this code
-// ! should not depend on OVS being used.
-// TODO As a fix, make these consts fields of a subnetStrategy, and have them
-// injected by the creator of that strategy, so that such creator can set them to the values
-// associated with the low-level networking implementation used.
 const (
 	minVNI uint32 = 1
 	maxVNI uint32 = 2097151

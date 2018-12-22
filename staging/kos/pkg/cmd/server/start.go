@@ -105,7 +105,7 @@ func (o *NetworkAPIServerOptions) Config() (*apiserver.Config, error) {
 	if err != nil {
 		return nil, err
 	}
-	networkInformerFactory := networkinformers.NewSharedInformerFactory(client, serverConfig.LoopbackClientConfig.Timeout)
+	networkInformerFactory := networkinformers.NewSharedInformerFactory(client, 0)
 
 	config := &apiserver.Config{
 		GenericConfig: serverConfig,
