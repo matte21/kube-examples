@@ -63,7 +63,7 @@ func SelectableFields(obj *network.NetworkAttachment) fields.Set {
 		fields.Set{
 			"spec.node":   obj.Spec.Node,
 			"spec.subnet": obj.Spec.Subnet,
-			"spec.vni":    fmt.Sprint(obj.Spec.VNI),
+			"spec.vni":    fmt.Sprintf("%d", obj.Spec.VNI),
 		},
 		&obj.ObjectMeta, true)
 }
