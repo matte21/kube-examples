@@ -25,15 +25,12 @@ import (
 	"github.com/spf13/cobra"
 
 	utilerrors "k8s.io/apimachinery/pkg/util/errors"
-	"k8s.io/apiserver/pkg/admission"
 	genericapiserver "k8s.io/apiserver/pkg/server"
 	genericoptions "k8s.io/apiserver/pkg/server/options"
-	"k8s.io/examples/staging/kos/pkg/admission/networkinitializer"
-	"k8s.io/examples/staging/kos/pkg/admission/plugin/checksubnets"
 	"k8s.io/examples/staging/kos/pkg/apis/network/v1alpha1"
 	"k8s.io/examples/staging/kos/pkg/apiserver"
-	clientset "k8s.io/examples/staging/kos/pkg/client/clientset/internalversion"
-	informers "k8s.io/examples/staging/kos/pkg/client/informers/internalversion"
+	networkclientset "k8s.io/examples/staging/kos/pkg/client/clientset/internalversion"
+	networkinformers "k8s.io/examples/staging/kos/pkg/client/informers/internalversion"
 )
 
 const defaultEtcdPathPrefix = "/registry/network.kubernetes.io"
@@ -41,9 +38,8 @@ const defaultEtcdPathPrefix = "/registry/network.kubernetes.io"
 type NetworkAPIServerOptions struct {
 	RecommendedOptions *genericoptions.RecommendedOptions
 
-	SharedInformerFactory informers.SharedInformerFactory
-	StdOut                io.Writer
-	StdErr                io.Writer
+	StdOut io.Writer
+	StdErr io.Writer
 }
 
 func NewNetworkAPIServerOptions(out, errOut io.Writer) *NetworkAPIServerOptions {
@@ -91,9 +87,6 @@ func (o NetworkAPIServerOptions) Validate(args []string) error {
 }
 
 func (o *NetworkAPIServerOptions) Complete() error {
-	// register admission plugins
-	checksubnets.Register(o.RecommendedOptions.Admission)
-
 	// TODO have a "real" external address
 	if err := o.RecommendedOptions.SecureServing.MaybeDefaultWithSelfSignedCerts("localhost", nil, []net.IP{net.ParseIP("127.0.0.1")}); err != nil {
 		return fmt.Errorf("error creating self-signed certificates: %v", err)
@@ -103,24 +96,20 @@ func (o *NetworkAPIServerOptions) Complete() error {
 }
 
 func (o *NetworkAPIServerOptions) Config() (*apiserver.Config, error) {
-	o.RecommendedOptions.ExtraAdmissionInitializers = func(c *genericapiserver.RecommendedConfig) ([]admission.PluginInitializer, error) {
-		client, err := clientset.NewForConfig(c.LoopbackClientConfig)
-		if err != nil {
-			return nil, err
-		}
-		informerFactory := informers.NewSharedInformerFactory(client, c.LoopbackClientConfig.Timeout)
-		o.SharedInformerFactory = informerFactory
-		return []admission.PluginInitializer{networkinitializer.New(informerFactory)}, nil
-	}
-
 	serverConfig := genericapiserver.NewRecommendedConfig(apiserver.Codecs)
 	if err := o.RecommendedOptions.ApplyTo(serverConfig, apiserver.Scheme); err != nil {
 		return nil, err
 	}
 
+	client, err := networkclientset.NewForConfig(serverConfig.LoopbackClientConfig)
+	if err != nil {
+		return nil, err
+	}
+	networkInformerFactory := networkinformers.NewSharedInformerFactory(client, 0)
+
 	config := &apiserver.Config{
 		GenericConfig: serverConfig,
-		ExtraConfig:   apiserver.ExtraConfig{},
+		ExtraConfig:   &apiserver.ExtraConfig{networkInformerFactory},
 	}
 	return config, nil
 }
@@ -136,14 +125,14 @@ func (o NetworkAPIServerOptions) RunNetworkAPIServer(stopCh <-chan struct{}) err
 		return err
 	}
 
-	server.GenericAPIServer.AddPostStartHook("start-sample-server-informers", func(context genericapiserver.PostStartHookContext) error {
+	server.GenericAPIServer.AddPostStartHook("start-network-apiserver-informers", func(context genericapiserver.PostStartHookContext) error {
 		glog.V(1).Infoln("SharedInformerFactorys about to start")
 		config.GenericConfig.SharedInformerFactory.Start(context.StopCh)
-		o.SharedInformerFactory.Start(context.StopCh)
+		config.ExtraConfig.NetworkSharedInformerFactory.Start(context.StopCh)
 		glog.V(1).Infoln("SharedInformerFactorys started")
 		return nil
 	})
-	glog.V(1).Infoln("start-sample-server-informers PostStartHook added")
+	glog.V(1).Infoln("start-network-apiserver-informers PostStartHook added")
 
 	return server.GenericAPIServer.PrepareRun().Run(stopCh)
 }
