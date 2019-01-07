@@ -47,6 +47,10 @@ type NetworkAttachmentStatus struct {
 	// IP address, or the empty string when there is no address
 	LockUID string
 
+	// LockVNI is the VNI where the IPLock object holding this attachment's
+	// IP address is valid, or the empty string when there is no address
+	LockVNI uint32
+
 	// IPv4 is non-empty when an address has been assigned
 	IPv4 string
 

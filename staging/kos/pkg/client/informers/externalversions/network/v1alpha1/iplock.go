@@ -25,7 +25,7 @@ import (
 	runtime "k8s.io/apimachinery/pkg/runtime"
 	watch "k8s.io/apimachinery/pkg/watch"
 	cache "k8s.io/client-go/tools/cache"
-	network_v1alpha1 "k8s.io/examples/staging/kos/pkg/apis/network/v1alpha1"
+	networkv1alpha1 "k8s.io/examples/staging/kos/pkg/apis/network/v1alpha1"
 	versioned "k8s.io/examples/staging/kos/pkg/client/clientset/versioned"
 	internalinterfaces "k8s.io/examples/staging/kos/pkg/client/informers/externalversions/internalinterfaces"
 	v1alpha1 "k8s.io/examples/staging/kos/pkg/client/listers/network/v1alpha1"
@@ -70,7 +70,7 @@ func NewFilteredIPLockInformer(client versioned.Interface, namespace string, res
 				return client.NetworkV1alpha1().IPLocks(namespace).Watch(options)
 			},
 		},
-		&network_v1alpha1.IPLock{},
+		&networkv1alpha1.IPLock{},
 		resyncPeriod,
 		indexers,
 	)
@@ -81,7 +81,7 @@ func (f *iPLockInformer) defaultInformer(client versioned.Interface, resyncPerio
 }
 
 func (f *iPLockInformer) Informer() cache.SharedIndexInformer {
-	return f.factory.InformerFor(&network_v1alpha1.IPLock{}, f.defaultInformer)
+	return f.factory.InformerFor(&networkv1alpha1.IPLock{}, f.defaultInformer)
 }
 
 func (f *iPLockInformer) Lister() v1alpha1.IPLockLister {

@@ -14,7 +14,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package ipamctlr
+package ipam
 
 import (
 	"fmt"
@@ -28,7 +28,6 @@ import (
 
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	k8smetav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	k8sruntime "k8s.io/apimachinery/pkg/runtime"
 	k8stypes "k8s.io/apimachinery/pkg/types"
 	k8sutilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	k8swait "k8s.io/apimachinery/pkg/util/wait"
@@ -38,6 +37,7 @@ import (
 	netv1a1 "k8s.io/examples/staging/kos/pkg/apis/network/v1alpha1"
 	kosclientv1a1 "k8s.io/examples/staging/kos/pkg/client/clientset/versioned/typed/network/v1alpha1"
 	netlistv1a1 "k8s.io/examples/staging/kos/pkg/client/listers/network/v1alpha1"
+	kosctlrutils "k8s.io/examples/staging/kos/pkg/controllers/utils"
 
 	"k8s.io/examples/staging/kos/pkg/uint32set"
 )
@@ -167,7 +167,7 @@ func (ctlr *IPAMController) OnSubnetNotify(subnet *netv1a1.Subnet, op string) {
 	glog.V(4).Infof("Notified of %s of Subnet %s/%s, queuing %d attachments\n", op, subnet.Namespace, subnet.Name, len(subnetAttachments))
 	for _, attObj := range subnetAttachments {
 		att := attObj.(*netv1a1.NetworkAttachment)
-		ctlr.queue.Add(AttNSN(att))
+		ctlr.queue.Add(kosctlrutils.AttNSN(att))
 		glog.V(5).Infof("Queuing %s/%s due to notification of %s of Subnet %s/%s\n", att.Namespace, att.Name, op, subnet.Namespace, subnet.Name)
 	}
 }
@@ -175,20 +175,20 @@ func (ctlr *IPAMController) OnSubnetNotify(subnet *netv1a1.Subnet, op string) {
 func (ctlr *IPAMController) OnAttachmentCreate(obj interface{}) {
 	att := obj.(*netv1a1.NetworkAttachment)
 	glog.V(5).Infof("Notified of creation of NetworkAttachment %#+v\n", att)
-	ctlr.queue.Add(AttNSN(att))
+	ctlr.queue.Add(kosctlrutils.AttNSN(att))
 }
 
 func (ctlr *IPAMController) OnAttachmentUpdate(oldObj, newObj interface{}) {
 	oldAtt := oldObj.(*netv1a1.NetworkAttachment)
 	newAtt := newObj.(*netv1a1.NetworkAttachment)
 	glog.V(5).Infof("Notified of update of NetworkAttachment from %#+v to %#+v\n", oldAtt, newAtt)
-	ctlr.queue.Add(AttNSN(newAtt))
+	ctlr.queue.Add(kosctlrutils.AttNSN(newAtt))
 }
 
 func (ctlr *IPAMController) OnAttachmentDelete(obj interface{}) {
-	att := Peel(obj).(*netv1a1.NetworkAttachment)
+	att := kosctlrutils.Peel(obj).(*netv1a1.NetworkAttachment)
 	glog.V(5).Infof("Notified of deletion of NetworkAttachment %#+v\n", att)
-	ctlr.queue.Add(AttNSN(att))
+	ctlr.queue.Add(kosctlrutils.AttNSN(att))
 }
 
 func (ctlr *IPAMController) OnLockCreate(obj interface{}) {
@@ -548,6 +548,7 @@ func (ctlr *IPAMController) pickAndLockAddress(ns, name string, att *netv1a1.Net
 func (ctlr *IPAMController) setIPInStatus(ns, name string, att *netv1a1.NetworkAttachment, nadat *NetworkAttachmentData, subnetRV string, lockForStatus ParsedLock, ipForStatus gonet.IP) error {
 	att2 := att.DeepCopy()
 	att2.Status.LockUID = string(lockForStatus.UID)
+	att2.Status.LockVNI = lockForStatus.VNI
 	att2.Status.IPv4 = ipForStatus.String()
 	attachmentOps := ctlr.netIfc.NetworkAttachments(ns)
 	att3, err := attachmentOps.Update(att2)
@@ -630,23 +631,6 @@ func GetOwner(obj k8smetav1.Object, ownerKind string) (name string, uid k8stypes
 		}
 	}
 	return
-}
-
-// Peel removes the k8scache.DeletedFinalStateUnknown wrapper,
-// if any, and returns the result as a k8sruntime.Object.
-func Peel(obj interface{}) k8sruntime.Object {
-	switch o := obj.(type) {
-	case *k8scache.DeletedFinalStateUnknown:
-		return o.Obj.(k8sruntime.Object)
-	case k8sruntime.Object:
-		return o
-	default:
-		panic(obj)
-	}
-}
-
-func AttNSN(obj *netv1a1.NetworkAttachment) k8stypes.NamespacedName {
-	return k8stypes.NamespacedName{obj.Namespace, obj.Name}
 }
 
 func IPv4ToUint32(ip gonet.IP) uint32 {

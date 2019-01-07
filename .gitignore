@@ -1,8 +1,10 @@
 # The built binaries
 staging/kos/images/*/*r
+staging/kos/images/*/*/*[rt]
 
 # The generated manifests
 staging/kos/deploy/50-rs-*.yaml
+staging/kos/deploy/50-ds-*.yaml
 
 # Do not need vendor, see glide.lock
 staging/kos/vendor

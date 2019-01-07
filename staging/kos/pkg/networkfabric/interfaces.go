@@ -14,22 +14,30 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package localifc
+package networkfabric
 
 import (
 	"net"
 )
 
+// Interface is the interface of a network fabric which allows
+// the user to implement Netowrk Interfaces. The implementer
+// MUST return nil when the user attempts to delete an Interface
+// which does not exist.
 type Interface interface {
-	Create(NetworkInterface) error
-	Delete(NetworkInterface) error
-	List() ([]NetworkInterface, error)
+	Name() string
+	CreateLocalIfc(NetworkInterface) error
+	DeleteLocalIfc(NetworkInterface) error
+	CreateRemoteIfc(NetworkInterface) error
+	DeleteRemoteIfc(NetworkInterface) error
+	ListLocalIfcs() ([]NetworkInterface, error)
+	ListRemoteIfcs() ([]NetworkInterface, error)
 }
 
 type NetworkInterface struct {
 	Name     string
 	VNI      uint32
-	guestMAC net.HardwareAddr
-	guestIP  net.IP
-	hostIP   net.IP
+	GuestMAC net.HardwareAddr
+	GuestIP  net.IP
+	HostIP   net.IP
 }

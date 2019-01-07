@@ -26,7 +26,7 @@ import (
 	watch "k8s.io/apimachinery/pkg/watch"
 	cache "k8s.io/client-go/tools/cache"
 	network "k8s.io/examples/staging/kos/pkg/apis/network"
-	clientset_internalversion "k8s.io/examples/staging/kos/pkg/client/clientset/internalversion"
+	clientsetinternalversion "k8s.io/examples/staging/kos/pkg/client/clientset/internalversion"
 	internalinterfaces "k8s.io/examples/staging/kos/pkg/client/informers/internalversion/internalinterfaces"
 	internalversion "k8s.io/examples/staging/kos/pkg/client/listers/network/internalversion"
 )
@@ -47,14 +47,14 @@ type subnetInformer struct {
 // NewSubnetInformer constructs a new informer for Subnet type.
 // Always prefer using an informer factory to get a shared informer instead of getting an independent
 // one. This reduces memory footprint and number of connections to the server.
-func NewSubnetInformer(client clientset_internalversion.Interface, namespace string, resyncPeriod time.Duration, indexers cache.Indexers) cache.SharedIndexInformer {
+func NewSubnetInformer(client clientsetinternalversion.Interface, namespace string, resyncPeriod time.Duration, indexers cache.Indexers) cache.SharedIndexInformer {
 	return NewFilteredSubnetInformer(client, namespace, resyncPeriod, indexers, nil)
 }
 
 // NewFilteredSubnetInformer constructs a new informer for Subnet type.
 // Always prefer using an informer factory to get a shared informer instead of getting an independent
 // one. This reduces memory footprint and number of connections to the server.
-func NewFilteredSubnetInformer(client clientset_internalversion.Interface, namespace string, resyncPeriod time.Duration, indexers cache.Indexers, tweakListOptions internalinterfaces.TweakListOptionsFunc) cache.SharedIndexInformer {
+func NewFilteredSubnetInformer(client clientsetinternalversion.Interface, namespace string, resyncPeriod time.Duration, indexers cache.Indexers, tweakListOptions internalinterfaces.TweakListOptionsFunc) cache.SharedIndexInformer {
 	return cache.NewSharedIndexInformer(
 		&cache.ListWatch{
 			ListFunc: func(options v1.ListOptions) (runtime.Object, error) {
@@ -76,7 +76,7 @@ func NewFilteredSubnetInformer(client clientset_internalversion.Interface, names
 	)
 }
 
-func (f *subnetInformer) defaultInformer(client clientset_internalversion.Interface, resyncPeriod time.Duration) cache.SharedIndexInformer {
+func (f *subnetInformer) defaultInformer(client clientsetinternalversion.Interface, resyncPeriod time.Duration) cache.SharedIndexInformer {
 	return NewFilteredSubnetInformer(client, f.namespace, resyncPeriod, cache.Indexers{cache.NamespaceIndex: cache.MetaNamespaceIndexFunc}, f.tweakListOptions)
 }
 
