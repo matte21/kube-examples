@@ -34,10 +34,6 @@ type NetworkAttachmentSpec struct {
 
 	// Subnet is the object name of the subnet of this attachment
 	Subnet string
-
-	// VNI identifies the virtual network this NetworkAttachment belongs to.
-	// Valid values are in the range [1,2097151].
-	VNI uint32
 }
 
 type NetworkAttachmentStatus struct {

@@ -210,7 +210,6 @@ func Convert_network_NetworkAttachmentList_To_v1alpha1_NetworkAttachmentList(in 
 func autoConvert_v1alpha1_NetworkAttachmentSpec_To_network_NetworkAttachmentSpec(in *NetworkAttachmentSpec, out *network.NetworkAttachmentSpec, s conversion.Scope) error {
 	out.Node = in.Node
 	out.Subnet = in.Subnet
-	out.VNI = in.VNI
 	return nil
 }
 
@@ -222,7 +221,6 @@ func Convert_v1alpha1_NetworkAttachmentSpec_To_network_NetworkAttachmentSpec(in 
 func autoConvert_network_NetworkAttachmentSpec_To_v1alpha1_NetworkAttachmentSpec(in *network.NetworkAttachmentSpec, out *NetworkAttachmentSpec, s conversion.Scope) error {
 	out.Node = in.Node
 	out.Subnet = in.Subnet
-	out.VNI = in.VNI
 	return nil
 }
 

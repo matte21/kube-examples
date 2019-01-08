@@ -64,7 +64,6 @@ func SelectableFields(obj *network.NetworkAttachment) fields.Set {
 		fields.Set{
 			"spec.node":         obj.Spec.Node,
 			"spec.subnet":       obj.Spec.Subnet,
-			"spec.vni":          strconv.FormatUint(uint64(obj.Spec.VNI), 10),
 			"status.ipv4":       obj.Status.IPv4,
 			"status.hostIP":     obj.Status.HostIP,
 			"status.addressVNI": strconv.FormatUint(uint64(obj.Status.AddressVNI), 10),

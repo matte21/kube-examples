@@ -56,7 +56,7 @@ const (
 	attNodeFieldName   = "spec.node"
 	attIPFieldName     = "status.ipv4"
 	attHostIPFieldName = "status.hostIP"
-	attVNIFieldName    = "spec.vni"
+	attVNIFieldName    = "status.addressVNI"
 
 	// fields selector comparison operators.
 	// Used to build fields selectors.
@@ -354,7 +354,7 @@ func (ca *ConnectionAgent) handlePreExistingRemoteIfcs() error {
 		return fmt.Errorf("Failed initial local attachments list: %s", err.Error())
 	}
 	for _, aLocalAtt := range allLocalAtts {
-		aLocalAttNSN, aLocalAttVNI := kosctlrutils.AttNSN(aLocalAtt), aLocalAtt.Spec.VNI
+		aLocalAttNSN, aLocalAttVNI := kosctlrutils.AttNSN(aLocalAtt), aLocalAtt.Status.AddressVNI
 		aLocalAttState := ca.getAttState(aLocalAttNSN)
 		ca.updateVNStateForExistingAtt(aLocalAttNSN, true, aLocalAttVNI, aLocalAttState)
 	}
@@ -534,21 +534,7 @@ func (ca *ConnectionAgent) getAttachment(attNSN k8stypes.NamespacedName) (*netv1
 }
 
 func (ca *ConnectionAgent) processExistingAtt(att *netv1a1.NetworkAttachment) error {
-	attNSN, attVNI, attAddrVNI := kosctlrutils.AttNSN(att), att.Spec.VNI, att.Status.AddressVNI
-	if attVNI != attAddrVNI {
-		// If we're here the attachment Lock has validity in a different Virtual
-		// Network wrt to the one where it is now (whose ID is Spec.VNI). Hence its
-		// IP address is not valid, and we stop processing. When the attachment gets
-		// a new IP, valid in its latest virtual network, a new reference will be
-		// enqueued and processed to completion.
-		glog.V(4).Infof("Attachment %s has VNI %d but its IP is valid in VNI %d only, "+
-			"processing will stop.",
-			attNSN,
-			attVNI,
-			attAddrVNI,
-		)
-		return nil
-	}
+	attNSN, attVNI := kosctlrutils.AttNSN(att), att.Status.AddressVNI
 
 	// Retrieve the last seen attachment state, which stores the attachment network
 	// interface if it was created, and the vni with which it was processed last time
@@ -906,10 +892,10 @@ func (ca *ConnectionAgent) initVNState(vni uint32, namespace string) *vnState {
 func (ca *ConnectionAgent) onRemoteAttAdded(obj interface{}) {
 	att := obj.(*netv1a1.NetworkAttachment)
 	glog.V(5).Infof("Remote NetworkAttachments cache for VNI %d: notified of addition of %#+v",
-		att.Spec.VNI,
+		att.Status.AddressVNI,
 		att)
 	attNSN := kosctlrutils.AttNSN(att)
-	ca.addVNI(attNSN, att.Spec.VNI)
+	ca.addVNI(attNSN, att.Status.AddressVNI)
 	ca.queue.Add(attNSN)
 }
 
@@ -917,7 +903,7 @@ func (ca *ConnectionAgent) onRemoteAttUpdated(oldObj, newObj interface{}) {
 	oldAtt := oldObj.(*netv1a1.NetworkAttachment)
 	newAtt := newObj.(*netv1a1.NetworkAttachment)
 	glog.V(5).Infof("Remote NetworkAttachments cache for VNI %d: notified of update from %#+v to %#+v",
-		newAtt.Spec.VNI,
+		newAtt.Status.AddressVNI,
 		oldAtt,
 		newAtt)
 	ca.queue.Add(kosctlrutils.AttNSN(newAtt))
@@ -927,10 +913,10 @@ func (ca *ConnectionAgent) onRemoteAttRemoved(obj interface{}) {
 	peeledObj := kosctlrutils.Peel(obj)
 	att := peeledObj.(*netv1a1.NetworkAttachment)
 	glog.V(5).Infof("Remote NetworkAttachments cache for VNI %d: notified of deletion of %#+v",
-		att.Spec.VNI,
+		att.Status.AddressVNI,
 		att)
 	attNSN := kosctlrutils.AttNSN(att)
-	ca.removeVNI(attNSN, att.Spec.VNI)
+	ca.removeVNI(attNSN, att.Status.AddressVNI)
 	ca.queue.Add(attNSN)
 }
 
