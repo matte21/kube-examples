@@ -548,7 +548,7 @@ func (ctlr *IPAMController) pickAndLockAddress(ns, name string, att *netv1a1.Net
 func (ctlr *IPAMController) setIPInStatus(ns, name string, att *netv1a1.NetworkAttachment, nadat *NetworkAttachmentData, subnetRV string, lockForStatus ParsedLock, ipForStatus gonet.IP) error {
 	att2 := att.DeepCopy()
 	att2.Status.LockUID = string(lockForStatus.UID)
-	att2.Status.LockVNI = lockForStatus.VNI
+	att2.Status.AddressVNI = lockForStatus.VNI
 	att2.Status.IPv4 = ipForStatus.String()
 	attachmentOps := ctlr.netIfc.NetworkAttachments(ns)
 	att3, err := attachmentOps.Update(att2)

@@ -44,12 +44,14 @@ type NetworkAttachmentStatus struct {
 	Errors NetworkAttachmentErrors `json:"errors,omitempty" protobuf:"bytes,1,opt,name=errors"`
 
 	// LockUID is the UID of the IPLock object holding this attachment's
-	// IP address, or the empty string when there is no address
+	// IP address, or the empty string when there is no address.
+	// This field is a private detail of the implementation, not really
+	// part of the public API.
 	LockUID string `json:"lockUID,omitempty" protobuf:"bytes,2,opt,name=lockUID"`
 
-	// LockVNI is the VNI where the IPLock object holding this attachment's
-	// IP address is valid, or the empty string when there is no address
-	LockVNI uint32 `json:"lockVNI,omitempty" protobuf:"bytes,3,opt,name=lockVNI"`
+	// AddressVNI is the VNI associated with this attachment's
+	// IP address assignment, or the empty string when there is no address.
+	AddressVNI uint32 `json:"addressVNI,omitempty" protobuf:"bytes,3,opt,name=addressVNI"`
 
 	// IPv4 is non-empty when an address has been assigned
 	IPv4 string `json:"ipv4,omitempty" protobuf:"bytes,4,opt,name=ipv4"`

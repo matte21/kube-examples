@@ -534,8 +534,8 @@ func (ca *ConnectionAgent) getAttachment(attNSN k8stypes.NamespacedName) (*netv1
 }
 
 func (ca *ConnectionAgent) processExistingAtt(att *netv1a1.NetworkAttachment) error {
-	attNSN, attVNI, attLockVNI := kosctlrutils.AttNSN(att), att.Spec.VNI, att.Status.LockVNI
-	if attVNI != attLockVNI {
+	attNSN, attVNI, attAddrVNI := kosctlrutils.AttNSN(att), att.Spec.VNI, att.Status.AddressVNI
+	if attVNI != attAddrVNI {
 		// If we're here the attachment Lock has validity in a different Virtual
 		// Network wrt to the one where it is now (whose ID is Spec.VNI). Hence its
 		// IP address is not valid, and we stop processing. When the attachment gets
@@ -545,7 +545,7 @@ func (ca *ConnectionAgent) processExistingAtt(att *netv1a1.NetworkAttachment) er
 			"processing will stop.",
 			attNSN,
 			attVNI,
-			attLockVNI,
+			attAddrVNI,
 		)
 		return nil
 	}
@@ -1100,7 +1100,7 @@ func createAttsv1a1Informer(kcs *kosclientset.Clientset,
 // start up.
 func attachmentMACAddr(obj interface{}) ([]string, error) {
 	att := obj.(*netv1a1.NetworkAttachment)
-	return []string{generateMACAddr(att.Status.LockVNI, gonet.ParseIP(att.Status.IPv4)).String()}, nil
+	return []string{generateMACAddr(att.Status.AddressVNI, gonet.ParseIP(att.Status.IPv4)).String()}, nil
 }
 
 func generateIfcName(macAddr gonet.HardwareAddr) string {
