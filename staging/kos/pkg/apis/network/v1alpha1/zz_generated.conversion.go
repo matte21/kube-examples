@@ -236,7 +236,7 @@ func autoConvert_v1alpha1_NetworkAttachmentStatus_To_network_NetworkAttachmentSt
 		return err
 	}
 	out.LockUID = in.LockUID
-	out.LockVNI = in.LockVNI
+	out.AddressVNI = in.AddressVNI
 	out.IPv4 = in.IPv4
 	out.IfcName = in.IfcName
 	out.HostIP = in.HostIP
@@ -253,7 +253,7 @@ func autoConvert_network_NetworkAttachmentStatus_To_v1alpha1_NetworkAttachmentSt
 		return err
 	}
 	out.LockUID = in.LockUID
-	out.LockVNI = in.LockVNI
+	out.AddressVNI = in.AddressVNI
 	out.IPv4 = in.IPv4
 	out.IfcName = in.IfcName
 	out.HostIP = in.HostIP

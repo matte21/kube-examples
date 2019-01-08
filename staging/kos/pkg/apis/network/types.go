@@ -44,12 +44,14 @@ type NetworkAttachmentStatus struct {
 	Errors NetworkAttachmentErrors
 
 	// LockUID is the UID of the IPLock object holding this attachment's
-	// IP address, or the empty string when there is no address
+	// IP address, or the empty string when there is no address.
+	// This field is a private detail of the implementation, not really
+	// part of the public API.
 	LockUID string
 
-	// LockVNI is the VNI where the IPLock object holding this attachment's
-	// IP address is valid, or the empty string when there is no address
-	LockVNI uint32
+	// AddressVNI is the VNI associated with this attachment's
+	// IP address assignment, or the empty string when there is no address.
+	AddressVNI uint32
 
 	// IPv4 is non-empty when an address has been assigned
 	IPv4 string

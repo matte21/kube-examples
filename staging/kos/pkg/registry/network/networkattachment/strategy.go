@@ -18,6 +18,7 @@ package networkattachment
 
 import (
 	"fmt"
+	"strconv"
 
 	"k8s.io/apimachinery/pkg/fields"
 	"k8s.io/apimachinery/pkg/labels"
@@ -61,11 +62,12 @@ func MatchNetworkAttachment(label labels.Selector, field fields.Selector) storag
 func SelectableFields(obj *network.NetworkAttachment) fields.Set {
 	return generic.AddObjectMetaFieldsSet(
 		fields.Set{
-			"spec.node":     obj.Spec.Node,
-			"spec.subnet":   obj.Spec.Subnet,
-			"spec.vni":      fmt.Sprint(obj.Spec.VNI),
-			"status.ipv4":   obj.Status.IPv4,
-			"status.hostIP": obj.Status.HostIP,
+			"spec.node":         obj.Spec.Node,
+			"spec.subnet":       obj.Spec.Subnet,
+			"spec.vni":          strconv.FormatUint(uint64(obj.Spec.VNI), 10),
+			"status.ipv4":       obj.Status.IPv4,
+			"status.hostIP":     obj.Status.HostIP,
+			"status.addressVNI": strconv.FormatUint(uint64(obj.Status.AddressVNI), 10),
 		},
 		&obj.ObjectMeta, true)
 }
