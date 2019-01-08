@@ -34,10 +34,6 @@ type NetworkAttachmentSpec struct {
 
 	// Subnet is the object name of the subnet of this attachment
 	Subnet string `json:"subnet" protobuf:"bytes,2,name=subnet"`
-
-	// VNI identifies the virtual network this NetworkAttachment belongs to.
-	// Valid values are in the range [1,2097151].
-	VNI uint32 `json:"vni" protobuf:"bytes,3,name=vni"`
 }
 
 type NetworkAttachmentStatus struct {
