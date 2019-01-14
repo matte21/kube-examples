@@ -17,6 +17,7 @@ limitations under the License.
 package connectionagent
 
 import (
+	"bytes"
 	"fmt"
 	gonet "net"
 	"strings"
@@ -276,13 +277,13 @@ func (ca *ConnectionAgent) onLocalAttUpdated(oldObj, newObj interface{}) {
 func (ca *ConnectionAgent) onLocalAttRemoved(obj interface{}) {
 	peeledObj := kosctlrutils.Peel(obj)
 	att := peeledObj.(*netv1a1.NetworkAttachment)
-	glog.V(5).Infof("Local NetworkAttachments cache: notified of removal of %#+v", att)
+	glog.V(5).Infof("local NetworkAttachments cache: notified of removal of %#+v", att)
 	ca.queue.Add(kosctlrutils.AttNSN(att))
 }
 
 func (ca *ConnectionAgent) waitForLocalAttsCacheSync(stopCh <-chan struct{}) (err error) {
 	if !k8scache.WaitForCacheSync(stopCh, ca.localAttsInformer.HasSynced) {
-		err = fmt.Errorf("Caches failed to sync")
+		err = fmt.Errorf("caches failed to sync")
 	}
 	return
 }
@@ -300,14 +301,14 @@ func (ca *ConnectionAgent) handlePreExistingIfcs() (err error) {
 func (ca *ConnectionAgent) handlePreExistingLocalIfcs() error {
 	allPreExistingLocalIfcs, err := ca.netFabric.ListLocalIfcs()
 	if err != nil {
-		return fmt.Errorf("Failed initial local network interfaces list: %s", err.Error())
+		return fmt.Errorf("failed initial local network interfaces list: %s", err.Error())
 	}
 
 	for _, aPreExistingLocalIfc := range allPreExistingLocalIfcs {
 		ifcMAC := aPreExistingLocalIfc.GuestMAC.String()
 		ifcOwnerAtts, err := ca.localAttsInformer.GetIndexer().ByIndex(attMACIndexName, ifcMAC)
 		if err != nil {
-			return fmt.Errorf("Indexing local network interface with MAC %s failed: %s",
+			return fmt.Errorf("indexing local network interface with MAC %s failed: %s",
 				ifcMAC,
 				err.Error())
 		}
@@ -321,7 +322,7 @@ func (ca *ConnectionAgent) handlePreExistingLocalIfcs() error {
 			attState := ca.getAttState(attNSN)
 			oldIfc, oldIfcExists := attState.ifc, attState.ifcIsSet
 			attState.ifc, attState.ifcIsSet = aPreExistingLocalIfc, true
-			glog.V(3).Infof("Matched interface %#+v with local attachment %#+v", aPreExistingLocalIfc, ifcOwnerAtt)
+			glog.V(3).Infof("matched interface %#+v with local attachment %#+v", aPreExistingLocalIfc, ifcOwnerAtt)
 			if oldIfcExists {
 				aPreExistingLocalIfc = oldIfc
 			} else {
@@ -334,13 +335,13 @@ func (ca *ConnectionAgent) handlePreExistingLocalIfcs() error {
 		// it has already been matched has changed and was matched to a different
 		// interface.
 		for i, err := 1, ca.netFabric.DeleteLocalIfc(aPreExistingLocalIfc); err != nil; i++ {
-			glog.V(3).Infof("Deletion of orphan local interface %#+v failed: %s. Attempt nbr. %d",
+			glog.V(3).Infof("deletion of orphan local interface %#+v failed: %s. Attempt nbr. %d",
 				aPreExistingLocalIfc,
 				err.Error(),
 				i)
 			time.Sleep(netFabricRetryPeriod)
 		}
-		glog.V(3).Infof("Deleted orphan local interface %#+v", aPreExistingLocalIfc)
+		glog.V(3).Infof("deleted orphan local interface %#+v", aPreExistingLocalIfc)
 	}
 
 	return nil
@@ -567,13 +568,13 @@ func (ca *ConnectionAgent) processExistingAtt(att *netv1a1.NetworkAttachment) er
 	}
 
 	// Create or update the interface associated with the attachment.
-	attGuestIP := gonet.ParseIP(att.Status.IPv4)
 	var attHostIP gonet.IP
 	if attNode == ca.localNodeName {
 		attHostIP = ca.hostIP
 	} else {
 		attHostIP = gonet.ParseIP(att.Status.HostIP)
 	}
+	attGuestIP := gonet.ParseIP(att.Status.IPv4)
 	err := ca.createOrUpdateIfc(attState,
 		attGuestIP,
 		attHostIP,
@@ -760,13 +761,14 @@ func (ca *ConnectionAgent) createOrUpdateIfc(attState *attachmentState,
 	attNSN k8stypes.NamespacedName) (err error) {
 
 	existingIfc, attHasIfc := attState.ifc, attState.ifcIsSet
+	attMAC := generateMACAddr(attVNI, attGuestIP)
 
 	newIfcNeedsToBeCreated := !attHasIfc ||
-		ifcNeedsUpdate(existingIfc, attGuestIP, attHostIP, attVNI)
+		ifcNeedsUpdate(existingIfc.HostIP, attHostIP, existingIfc.GuestMAC, attMAC)
 
 	err = ca.deleteIfc(existingIfc, attHasIfc && newIfcNeedsToBeCreated)
 	if err != nil {
-		err = fmt.Errorf("Update of network interface of attachment %s failed, old interface %#+v could not be deleted: %s",
+		err = fmt.Errorf("update of network interface of attachment %s failed, old interface %#+v could not be deleted: %s",
 			attNSN,
 			existingIfc,
 			err.Error())
@@ -775,12 +777,10 @@ func (ca *ConnectionAgent) createOrUpdateIfc(attState *attachmentState,
 
 	if newIfcNeedsToBeCreated {
 		attState.ifcIsSet = false
-		guestMAC := generateMACAddr(attVNI, attGuestIP)
 		newIfc := netfabric.NetworkInterface{
-			Name:     generateIfcName(guestMAC),
+			Name:     generateIfcName(attMAC),
 			VNI:      attVNI,
-			GuestMAC: guestMAC,
-			GuestIP:  attGuestIP,
+			GuestMAC: attMAC,
 			HostIP:   attHostIP,
 		}
 		if attHostIP.Equal(ca.hostIP) {
@@ -789,7 +789,7 @@ func (ca *ConnectionAgent) createOrUpdateIfc(attState *attachmentState,
 			err = ca.netFabric.CreateRemoteIfc(newIfc)
 		}
 		if err != nil {
-			err = fmt.Errorf("Creation of network interface of attachment %s failed, interface %#+v could not be created: %s",
+			err = fmt.Errorf("creation of network interface of attachment %s failed, interface %#+v could not be created: %s",
 				attNSN,
 				newIfc,
 				err.Error())
@@ -1140,8 +1140,6 @@ func aggregateErrors(sep string, errs ...error) error {
 }
 
 // TODO consider switching to pointers wrt value for the interface
-func ifcNeedsUpdate(ifc netfabric.NetworkInterface, newGuestIP, newHostIP gonet.IP, newVNI uint32) bool {
-	return !ifc.GuestIP.Equal(newGuestIP) ||
-		!ifc.HostIP.Equal(newHostIP) ||
-		ifc.VNI != newVNI
+func ifcNeedsUpdate(ifcHostIP, newHostIP gonet.IP, ifcMAC, newMAC gonet.HardwareAddr) bool {
+	return !ifcHostIP.Equal(newHostIP) || !bytes.Equal(ifcMAC, newMAC)
 }

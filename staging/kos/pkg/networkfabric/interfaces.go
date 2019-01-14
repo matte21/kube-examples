@@ -38,6 +38,5 @@ type NetworkInterface struct {
 	Name     string
 	VNI      uint32
 	GuestMAC net.HardwareAddr
-	GuestIP  net.IP
 	HostIP   net.IP
 }
