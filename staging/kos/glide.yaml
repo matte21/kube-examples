@@ -63,3 +63,5 @@ import:
 - package: k8s.io/code-generator
   version: release-1.10
 - package: k8s.io/gengo
+- package: github.com/prometheus/client_golang
+  version: ~0.9.2
