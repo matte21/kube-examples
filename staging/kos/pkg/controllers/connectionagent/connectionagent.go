@@ -753,6 +753,7 @@ func (ca *ConnectionAgent) createOrUpdateIfc(attGuestIP, attHostIP gonet.IP,
 				Name:     generateIfcName(attMAC),
 				VNI:      attVNI,
 				GuestMAC: attMAC,
+				GuestIP:  attGuestIP,
 				HostIP:   attHostIP,
 			}
 			if err := ca.netFabric.CreateLocalIfc(newLocalIfc); err != nil {
@@ -767,6 +768,7 @@ func (ca *ConnectionAgent) createOrUpdateIfc(attGuestIP, attHostIP gonet.IP,
 			newRemoteIfc := netfabric.RemoteNetIfc{
 				VNI:      attVNI,
 				GuestMAC: attMAC,
+				GuestIP:  attGuestIP,
 				HostIP:   attHostIP,
 			}
 			if err := ca.netFabric.CreateRemoteIfc(newRemoteIfc); err != nil {
