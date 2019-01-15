@@ -26,17 +26,17 @@ const name = "logger"
 // for debugging/testing. It does nothing but logging.
 type logger struct {
 	localIfcsMutex sync.RWMutex
-	localIfcs      map[string]NetworkInterface
+	localIfcs      map[string]LocalNetIfc
 
 	remoteIfcsMutex sync.RWMutex
-	remoteIfcs      map[string]NetworkInterface
+	remoteIfcs      map[string]RemoteNetIfc
 }
 
 func (l *logger) Name() string {
 	return name
 }
 
-func (l *logger) CreateLocalIfc(ifc NetworkInterface) error {
+func (l *logger) CreateLocalIfc(ifc LocalNetIfc) error {
 	l.localIfcsMutex.Lock()
 	l.localIfcs[ifc.Name] = ifc
 	l.localIfcsMutex.Unlock()
@@ -44,45 +44,44 @@ func (l *logger) CreateLocalIfc(ifc NetworkInterface) error {
 	return nil
 }
 
-func (l *logger) DeleteLocalIfc(ifc NetworkInterface) error {
+func (l *logger) DeleteLocalIfc(ifc LocalNetIfc) error {
 	l.localIfcsMutex.Lock()
 	delete(l.localIfcs, ifc.Name)
 	l.localIfcsMutex.Unlock()
-
 	glog.Infof("deleted local interface %#+v", ifc)
 	return nil
 }
 
-func (l *logger) CreateRemoteIfc(ifc NetworkInterface) error {
+func (l *logger) CreateRemoteIfc(ifc RemoteNetIfc) error {
 	l.remoteIfcsMutex.Lock()
-	l.remoteIfcs[ifc.Name] = ifc
+	l.remoteIfcs[ifc.GuestMAC.String()] = ifc
 	l.remoteIfcsMutex.Unlock()
 	glog.Infof("created remote interface %#+v", ifc)
 	return nil
 }
 
-func (l *logger) DeleteRemoteIfc(ifc NetworkInterface) error {
+func (l *logger) DeleteRemoteIfc(ifc RemoteNetIfc) error {
 	l.remoteIfcsMutex.Lock()
-	delete(l.remoteIfcs, ifc.Name)
+	delete(l.remoteIfcs, ifc.GuestMAC.String())
 	l.remoteIfcsMutex.Unlock()
 	glog.Infof("deleted remote interface %#+v", ifc)
 	return nil
 }
 
-func (l *logger) ListLocalIfcs() ([]NetworkInterface, error) {
+func (l *logger) ListLocalIfcs() ([]LocalNetIfc, error) {
 	l.localIfcsMutex.RLock()
 	defer l.localIfcsMutex.RUnlock()
-	localIfcsList := make([]NetworkInterface, 0, len(l.localIfcs))
+	localIfcsList := make([]LocalNetIfc, 0, len(l.localIfcs))
 	for _, ifc := range l.localIfcs {
 		localIfcsList = append(localIfcsList, ifc)
 	}
 	return localIfcsList, nil
 }
 
-func (l *logger) ListRemoteIfcs() ([]NetworkInterface, error) {
+func (l *logger) ListRemoteIfcs() ([]RemoteNetIfc, error) {
 	l.remoteIfcsMutex.RLock()
 	defer l.remoteIfcsMutex.RUnlock()
-	remoteIfcsList := make([]NetworkInterface, 0, len(l.remoteIfcs))
+	remoteIfcsList := make([]RemoteNetIfc, 0, len(l.remoteIfcs))
 	for _, ifc := range l.remoteIfcs {
 		remoteIfcsList = append(remoteIfcsList, ifc)
 	}
@@ -91,7 +90,7 @@ func (l *logger) ListRemoteIfcs() ([]NetworkInterface, error) {
 
 func init() {
 	registerFabric(name, &logger{
-		localIfcs:  make(map[string]NetworkInterface),
-		remoteIfcs: make(map[string]NetworkInterface),
+		localIfcs:  make(map[string]LocalNetIfc),
+		remoteIfcs: make(map[string]RemoteNetIfc),
 	})
 }

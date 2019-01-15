@@ -26,15 +26,21 @@ import (
 // which does not exist.
 type Interface interface {
 	Name() string
-	CreateLocalIfc(NetworkInterface) error
-	DeleteLocalIfc(NetworkInterface) error
-	CreateRemoteIfc(NetworkInterface) error
-	DeleteRemoteIfc(NetworkInterface) error
-	ListLocalIfcs() ([]NetworkInterface, error)
-	ListRemoteIfcs() ([]NetworkInterface, error)
+	CreateLocalIfc(LocalNetIfc) error
+	DeleteLocalIfc(LocalNetIfc) error
+	CreateRemoteIfc(RemoteNetIfc) error
+	DeleteRemoteIfc(RemoteNetIfc) error
+	ListLocalIfcs() ([]LocalNetIfc, error)
+	ListRemoteIfcs() ([]RemoteNetIfc, error)
 }
 
-type NetworkInterface struct {
+type RemoteNetIfc struct {
+	VNI      uint32
+	GuestMAC net.HardwareAddr
+	HostIP   net.IP
+}
+
+type LocalNetIfc struct {
 	Name     string
 	VNI      uint32
 	GuestMAC net.HardwareAddr
