@@ -127,8 +127,16 @@ func (f *ovsFabric) addDefaultFlows() error {
 	return nil
 }
 
-func newCreateBridgeCmd(bridge string) *exec.Cmd {
-	return exec.Command("ovs-vsctl", "--may-exist", "add-br", bridge)
+func (f *ovsFabric) newCreateBridgeCmd(bridge string) *exec.Cmd {
+	return exec.Command("ovs-vsctl",
+		"--may-exist",
+		"add-br",
+		f.bridge,
+		"--",
+		"set",
+		"bridge",
+		f.bridge,
+		"protocols=OpenFlow10,OpenFlow11,OpenFlow12,OpenFlow13,OpenFlow14,OpenFlow15,OpenFlow16")
 }
 
 func newAddVTEPCmd(bridge string) *exec.Cmd {
