@@ -16,7 +16,6 @@ spec:
         prometheus.io/port: "9294"
     spec:
       serviceAccountName: connection-agent
-      hostNetwork: true
       containers:
       - name: connection-agent
         image: DOCKER_PREFIX/kos-connection-agent:latest
