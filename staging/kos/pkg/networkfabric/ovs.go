@@ -15,14 +15,15 @@ limitations under the License.
 */
 package networkfabric
 
-// TODO refactor creation of commands and flows - use templates if it helps
 // TODO During creation/config ifcs, add check to make sure config is similar to what we want (need to think whether we actually need this, I think not)
 
 import (
+	"bytes"
 	"fmt"
 	"github.com/golang/glog"
 	"net"
 	"os/exec"
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -322,7 +323,6 @@ func (f *ovsFabric) DeleteLocalIfc(ifc NetworkInterface) error {
 	}
 
 	if err := f.deleteIfc(ifc.Name); err != nil {
-		// should we re-insert the flows? I say no
 		return err
 	}
 
@@ -406,16 +406,292 @@ func (f *ovsFabric) deleteRemoteIfcFlows(tunID uint32, dlDst net.HardwareAddr, a
 }
 
 func (f *ovsFabric) ListLocalIfcs() ([]NetworkInterface, error) {
-	// list interface names and ofport
-	// list flows
-	// for each ifc: retrieve the 2 flows whose actions is only output:ofport and match them
-	// delete interfaces left
-	// TODO undeploy/delete bridge
-	return nil, nil
+	// get map from local ifc name to its openflow port nbr
+	nameToOfport, err := f.getLocalIfcsNamesToOfports()
+	if err != nil {
+		return nil, err
+	}
+
+	// get the flows associated with local ifcs
+	flows, err := f.getFlows()
+	if err != nil {
+		return nil, err
+	}
+	localFlows := f.filterOutNonLocalFlows(flows)
+
+	// use flows to map ofport to local ifc data(MAC, guestIP, VNI)
+	ofportToIfcData, err := f.getOfportToLocalIfcData(localFlows)
+	if err != nil {
+		// TODO think whether it is better to simply log move on
+		return nil, err
+	}
+
+	// for each name in nameToOfport, use its ofport to retrieve its ifc data
+	// in ofportToIfcData. For each match, build the local ifc and add it to
+	// the list of ifcs to return. If for a name no match is found, it means
+	// that the connection agent crashed after creating the network device but
+	// before adding the flows: it is not possible to build a complete NetworkInterface
+	// struct (i.e. VNI and GuestIP are missing), hence we add the interface to
+	// a list of "orphan" ifcs for subsequent deletion
+	ifcsFound := make([]NetworkInterface, 0, len(ofportToIfcData))
+	orphanIfcs := make([]string, 0, 0)
+	for ifcName, ifcOfport := range nameToOfport {
+		if ifcData, found := ofportToIfcData[ifcOfport]; found {
+			ifc := NetworkInterface{
+				Name:     ifcName,
+				VNI:      ifcData.vni,
+				GuestIP:  ifcData.guestIP,
+				GuestMAC: ifcData.guestMAC,
+			}
+			ifcsFound = append(ifcsFound, ifc)
+		} else {
+			orphanIfcs = append(orphanIfcs, ifcName)
+		}
+	}
+
+	// best effort attempt to delete orphan ifcs
+	for _, anOrphanIfc := range orphanIfcs {
+		if err := f.deleteIfc(anOrphanIfc); err == nil {
+			glog.V(3).Infof("Deleted local interface %s (no flows associated with it could be found)",
+				anOrphanIfc)
+		} else {
+			glog.Errorf("Failed to deleted local interface %s (no flows associated with it could be found): %s",
+				anOrphanIfc,
+				err.Error())
+		}
+	}
+	return ifcsFound, nil
+}
+
+func (f *ovsFabric) getLocalIfcsNamesToOfports() (map[string]uint16, error) {
+	listIfcNamesAndOfport := f.newListIfcNamesAndOfPortCmd()
+
+	out, err := listIfcNamesAndOfport.CombinedOutput()
+	if err != nil {
+		return nil, fmt.Errorf("failed to list local ifcs names and ofports: %s: %s",
+			err.Error(),
+			string(out))
+	}
+
+	// TODO factor out following code in a different, "parse" method
+	ifcNamesAndOfports := bytes.Split(out, []byte("\n"))
+	ifcNamesToOfports := make(map[string]uint16, len(ifcNamesAndOfports))
+	for _, nameAndOfportBytes := range ifcNamesAndOfports {
+		nameAndOfportJoined := string(nameAndOfportBytes)
+		nameAndOfport := strings.Fields(nameAndOfportJoined)
+
+		// TODO this check is not enough. If there's more than one OvS bridge the
+		// interfaces of all bridges are retruned. Fix this.
+		if nameAndOfport[0] != vtep && nameAndOfport[0] != f.bridge {
+			ofport64, err := strconv.ParseUint(nameAndOfport[1], 10, 16)
+			if err != nil {
+				glog.Errorf("failed to parse openflow port nbr for local ifc %s",
+					nameAndOfport[0])
+			}
+			ifcNamesToOfports[nameAndOfport[0]] = uint16(ofport64)
+		}
+	}
+
+	return ifcNamesToOfports, nil
+}
+
+func (f *ovsFabric) getFlows() ([]string, error) {
+	getFlows := f.newGetFlowsCmd()
+
+	out, err := getFlows.CombinedOutput()
+	if err != nil {
+		return nil, fmt.Errorf("failed to list flows for bridge %s: %s: %s",
+			f.bridge,
+			err.Error(),
+			string(out))
+	}
+
+	// if we have a lot of flows we could be occupying a lot of memory
+	flowsBytes := bytes.Split(out, []byte("\n"))
+	flows := make([]string, 0, len(flowsBytes))
+	for _, aFlow := range flowsBytes {
+		flows = append(flows, string(aFlow))
+	}
+
+	return flows, nil
+}
+
+func (f *ovsFabric) filterOutNonLocalFlows(allFlows []string) (localFlows []string) {
+	localFlows = make([]string, 0, 0)
+	for _, aFlow := range allFlows {
+		if f.isLocal(aFlow) {
+			localFlows = append(localFlows, aFlow)
+		}
+	}
+	return
+}
+
+func (f *ovsFabric) isLocal(flow string) bool {
+	return strings.Contains(flow, "in_port") ||
+		strings.Contains(flow, "actions=output:")
+}
+
+func (f *ovsFabric) newListIfcNamesAndOfPortCmd() *exec.Cmd {
+	return exec.Command("ovs-vsctl",
+		"-f",
+		"table",
+		"--no-heading",
+		"--",
+		"--columns=name,ofport",
+		"list",
+		"Interface")
+}
+
+func (f *ovsFabric) newGetFlowsCmd() *exec.Cmd {
+	// TODO maybe we can do better: some options might filter out the flows we
+	// do not need
+	return exec.Command("ovs-vsctl", "dump-flows", "kos")
+}
+
+func (f *ovsFabric) getOfportToLocalIfcData(flows []string) (map[uint16]localIfcFlowsData, error) {
+	ofportToIfcData := make(map[uint16]localIfcFlowsData, len(flows)/3)
+	var err error
+	for _, aFlow := range flows {
+		// TODO use pointers for ifcData, time and memory cost will decrease
+		// by a fair amount if there are a lot of flows
+		switch {
+		case strings.Contains(aFlow, "in_port"):
+			ofport, vni, err := f.parseTunnelingFlow(aFlow)
+			if err == nil {
+				ifcData, _ := ofportToIfcData[ofport]
+				ifcData.vni = vni
+				ofportToIfcData[ofport] = ifcData
+			}
+		case strings.Contains(aFlow, "dl_dst"):
+			ofport, guestMAC, err := f.parseLocalDlTrafficFlow(aFlow)
+			if err == nil {
+				ifcData, _ := ofportToIfcData[ofport]
+				ifcData.guestMAC = guestMAC
+				ofportToIfcData[ofport] = ifcData
+			}
+		case strings.Contains(aFlow, "arp"):
+			ofport, guestIP, err := f.parseLocalARPFlow(aFlow)
+			if err == nil {
+				ifcData, _ := ofportToIfcData[ofport]
+				ifcData.guestIP = guestIP
+				ofportToIfcData[ofport] = ifcData
+			}
+		}
+	}
+	if err != nil {
+		return nil, err
+	}
+	return ofportToIfcData, nil
+}
+
+func (f *ovsFabric) parseTunnelingFlow(flow string) (ofport uint16, tunID uint32, err error) {
+	// extract ofport
+	inPortRegexp, err := regexp.Compile("in_port=[0-9]+")
+	if err != nil {
+		return
+	}
+	nbrRegexp, err := regexp.Compile("[0-9]+")
+	if err != nil {
+		return
+	}
+	ofportStr := nbrRegexp.FindString(inPortRegexp.FindString(flow))
+	ofport64, err := strconv.ParseUint(ofportStr, 10, 16)
+	if err != nil {
+		return
+	}
+	ofport = uint16(ofport64)
+
+	// extract tunnel ID
+	setFieldRegexp, err := regexp.Compile("set_field:[0-9]+")
+	if err != nil {
+		return
+	}
+	tunIDStr := nbrRegexp.FindString(setFieldRegexp.FindString(flow))
+	tunID64, err := strconv.ParseUint(tunIDStr, 10, 32)
+	if err != nil {
+		return
+	}
+	tunID = uint32(tunID64)
+
+	return
+}
+
+func (f *ovsFabric) parseLocalDlTrafficFlow(flow string) (ofport uint16, dlDst net.HardwareAddr, err error) {
+	// TODO factor out extraction of ofport in a different method and use that
+	// extract ofport
+	inPortRegexp, err := regexp.Compile("output:[0-9]+")
+	if err != nil {
+		return
+	}
+	ofportRegexp, err := regexp.Compile("[0-9]+")
+	if err != nil {
+		return
+	}
+	ofportStr := ofportRegexp.FindString(inPortRegexp.FindString(flow))
+	ofport64, err := strconv.ParseUint(ofportStr, 10, 16)
+	if err != nil {
+		return
+	}
+	ofport = uint16(ofport64)
+
+	// extract dlDst
+	dlDstKeyValPairRegexp, err := regexp.Compile("dl_dst=*,")
+	if err != nil {
+		return
+	}
+	dlDstValRegexp, err := regexp.Compile("^([0-9A-Fa-f]{2}[:-]){5}([0-9A-Fa-f]{2})$")
+	if err != nil {
+		return
+	}
+	dlDstStr := dlDstValRegexp.FindString(dlDstKeyValPairRegexp.FindString(flow))
+	dlDst, err = net.ParseMAC(dlDstStr)
+	return
+}
+
+func (f *ovsFabric) parseLocalARPFlow(flow string) (ofport uint16, arpTPA net.IP, err error) {
+	// TODO factor out extraction of ofport in a different method and use that
+	// extract ofport
+	inPortRegexp, err := regexp.Compile("output:[0-9]+")
+	if err != nil {
+		return
+	}
+	ofportRegexp, err := regexp.Compile("[0-9]+")
+	if err != nil {
+		return
+	}
+	ofportStr := ofportRegexp.FindString(inPortRegexp.FindString(flow))
+	ofport64, err := strconv.ParseUint(ofportStr, 10, 16)
+	if err != nil {
+		return
+	}
+	ofport = uint16(ofport64)
+
+	// extract dlDst
+	arpTPAKeyValPairRegexp, err := regexp.Compile("arp_tpa=*,")
+	if err != nil {
+		return
+	}
+	arpTPAValRegexp, err := regexp.Compile("^(([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])\\.){3}([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])$")
+	if err != nil {
+		return
+	}
+	arpTPAStr := arpTPAValRegexp.FindString(arpTPAKeyValPairRegexp.FindString(flow))
+	arpTPA = net.ParseIP(arpTPAStr)
+	if arpTPA == nil {
+		err = fmt.Errorf("%s is not a valid IPv4 address", arpTPA)
+	}
+	return
+}
+
+// localIfcFlowsData represents the data about a local interface that can
+// be inferred from the interface flows
+type localIfcFlowsData struct {
+	vni      uint32
+	guestIP  net.IP
+	guestMAC net.HardwareAddr
 }
 
 func (f *ovsFabric) ListRemoteIfcs() ([]NetworkInterface, error) {
-	// TODO implement
 	return nil, nil
 }
 
