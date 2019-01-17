@@ -226,7 +226,7 @@ func (f *ovsFabric) CreateLocalIfc(ifc NetworkInterface) (err error) {
 }
 
 func (f *ovsFabric) addLocalIfcFlows(ofport uint16, tunID uint32, dlDst net.HardwareAddr, arpTPA net.IP) error {
-	tunnelingFlow := fmt.Sprintf("table=0,in_port=%d,actions=set_tunnel:%d,resubmit(,1)",
+	tunnelingFlow := fmt.Sprintf("table=0,in_port=%d,actions=set_field:%d->tun_id,resubmit(,1)",
 		ofport,
 		tunID)
 	dlTrafficFlow := fmt.Sprintf("table=1,tun_id=%d,dl_dst=%s,actions=output:%d",
@@ -322,6 +322,7 @@ func (f *ovsFabric) DeleteLocalIfc(ifc NetworkInterface) error {
 	}
 
 	if err := f.deleteIfc(ifc.Name); err != nil {
+		// should we re-insert the flows? I say no
 		return err
 	}
 
@@ -405,7 +406,11 @@ func (f *ovsFabric) deleteRemoteIfcFlows(tunID uint32, dlDst net.HardwareAddr, a
 }
 
 func (f *ovsFabric) ListLocalIfcs() ([]NetworkInterface, error) {
-	// TODO list interfaces and ofport
+	// list interface names and ofport
+	// list flows
+	// for each ifc: retrieve the 2 flows whose actions is only output:ofport and match them
+	// delete interfaces left
+	// TODO undeploy/delete bridge
 	return nil, nil
 }
 
