@@ -40,7 +40,7 @@ func (l *logger) CreateLocalIfc(ifc LocalNetIfc) error {
 	l.localIfcsMutex.Lock()
 	l.localIfcs[ifc.Name] = ifc
 	l.localIfcsMutex.Unlock()
-	glog.Infof("created local interface %#+v", ifc)
+	glog.Infof("Created local interface %#+v", ifc)
 	return nil
 }
 
@@ -48,7 +48,7 @@ func (l *logger) DeleteLocalIfc(ifc LocalNetIfc) error {
 	l.localIfcsMutex.Lock()
 	delete(l.localIfcs, ifc.Name)
 	l.localIfcsMutex.Unlock()
-	glog.Infof("deleted local interface %#+v", ifc)
+	glog.Infof("Deleted local interface %#+v", ifc)
 	return nil
 }
 
@@ -56,7 +56,7 @@ func (l *logger) CreateRemoteIfc(ifc RemoteNetIfc) error {
 	l.remoteIfcsMutex.Lock()
 	l.remoteIfcs[ifc.GuestMAC.String()] = ifc
 	l.remoteIfcsMutex.Unlock()
-	glog.Infof("created remote interface %#+v", ifc)
+	glog.Infof("Created remote interface %#+v", ifc)
 	return nil
 }
 
@@ -64,7 +64,7 @@ func (l *logger) DeleteRemoteIfc(ifc RemoteNetIfc) error {
 	l.remoteIfcsMutex.Lock()
 	delete(l.remoteIfcs, ifc.GuestMAC.String())
 	l.remoteIfcsMutex.Unlock()
-	glog.Infof("deleted remote interface %#+v", ifc)
+	glog.Infof("Deleted remote interface %#+v", ifc)
 	return nil
 }
 
