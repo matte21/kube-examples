@@ -203,22 +203,22 @@ func (ca *ConnectionAgent) Run(stopCh <-chan struct{}) error {
 	ca.stopCh = stopCh
 	ca.initLocalAttsInformerAndLister()
 	go ca.localAttsInformer.Run(stopCh)
-	glog.V(2).Infoln("local NetworkAttachments informer started")
+	glog.V(2).Infoln("Local NetworkAttachments informer started")
 
 	if err := ca.waitForLocalAttsCacheSync(stopCh); err != nil {
 		return err
 	}
-	glog.V(2).Infoln("local NetworkAttachments cache synced")
+	glog.V(2).Infoln("Local NetworkAttachments cache synced")
 
 	if err := ca.syncPreExistingIfcs(); err != nil {
 		return err
 	}
-	glog.V(2).Infoln("pre-existing interfaces synced")
+	glog.V(2).Infoln("Pre-existing interfaces synced")
 
 	for i := 0; i < ca.workers; i++ {
 		go k8swait.Until(ca.processQueue, time.Second, stopCh)
 	}
-	glog.V(2).Infof("launched %d workers", ca.workers)
+	glog.V(2).Infof("Launched %d workers", ca.workers)
 
 	<-stopCh
 	return nil
@@ -242,14 +242,14 @@ func (ca *ConnectionAgent) initLocalAttsInformerAndLister() {
 
 func (ca *ConnectionAgent) onLocalAttAdded(obj interface{}) {
 	att := obj.(*netv1a1.NetworkAttachment)
-	glog.V(5).Infof("local NetworkAttachments cache: notified of addition of %#+v", att)
+	glog.V(5).Infof("Local NetworkAttachments cache: notified of addition of %#+v", att)
 	ca.queue.Add(kosctlrutils.AttNSN(att))
 }
 
 func (ca *ConnectionAgent) onLocalAttUpdated(oldObj, newObj interface{}) {
 	oldAtt := oldObj.(*netv1a1.NetworkAttachment)
 	newAtt := newObj.(*netv1a1.NetworkAttachment)
-	glog.V(5).Infof("local NetworkAttachments cache: notified of update from %#+v to %#+v",
+	glog.V(5).Infof("Local NetworkAttachments cache: notified of update from %#+v to %#+v",
 		oldAtt,
 		newAtt)
 	ca.queue.Add(kosctlrutils.AttNSN(newAtt))
@@ -258,7 +258,7 @@ func (ca *ConnectionAgent) onLocalAttUpdated(oldObj, newObj interface{}) {
 func (ca *ConnectionAgent) onLocalAttRemoved(obj interface{}) {
 	peeledObj := kosctlrutils.Peel(obj)
 	att := peeledObj.(*netv1a1.NetworkAttachment)
-	glog.V(5).Infof("local NetworkAttachments cache: notified of removal of %#+v", att)
+	glog.V(5).Infof("Local NetworkAttachments cache: notified of removal of %#+v", att)
 	ca.queue.Add(kosctlrutils.AttNSN(att))
 }
 
@@ -300,7 +300,7 @@ func (ca *ConnectionAgent) syncPreExistingLocalIfcs() error {
 			nsn := kosctlrutils.AttNSN(ifcOwnerAtt)
 			oldIfc, oldIfcExists := ca.getLocalIfc(nsn)
 			ca.assignLocalIfc(nsn, aPreExistingLocalIfc)
-			glog.V(3).Infof("matched interface %#+v with local attachment %#+v", aPreExistingLocalIfc, ifcOwnerAtt)
+			glog.V(3).Infof("Matched interface %#+v with local attachment %#+v", aPreExistingLocalIfc, ifcOwnerAtt)
 			if oldIfcExists {
 				aPreExistingLocalIfc = oldIfc
 			} else {
@@ -313,13 +313,13 @@ func (ca *ConnectionAgent) syncPreExistingLocalIfcs() error {
 		// it has already been matched has changed and was matched to a different
 		// interface.
 		for i, err := 1, ca.netFabric.DeleteLocalIfc(aPreExistingLocalIfc); err != nil; i++ {
-			glog.V(3).Infof("deletion of orphan local interface %#+v failed: %s. Attempt nbr. %d",
+			glog.V(3).Infof("Deletion of orphan local interface %#+v failed: %s. Attempt nbr. %d",
 				aPreExistingLocalIfc,
 				err.Error(),
 				i)
 			time.Sleep(netFabricRetryPeriod)
 		}
-		glog.V(3).Infof("deleted orphan local interface %#+v", aPreExistingLocalIfc)
+		glog.V(3).Infof("Deleted orphan local interface %#+v", aPreExistingLocalIfc)
 	}
 
 	return nil
@@ -363,7 +363,7 @@ func (ca *ConnectionAgent) syncPreExistingRemoteIfcs() error {
 			nsn := kosctlrutils.AttNSN(ifcOwnerAtt)
 			oldRemoteIfc, oldRemoteIfcExists := ca.getRemoteIfc(nsn)
 			ca.assignRemoteIfc(nsn, aPreExistingRemoteIfc)
-			glog.V(3).Infof("matched interface %#+v with remote attachment %#+v",
+			glog.V(3).Infof("Matched interface %#+v with remote attachment %#+v",
 				aPreExistingRemoteIfc,
 				ifcOwnerAtt)
 			if oldRemoteIfcExists {
@@ -371,13 +371,13 @@ func (ca *ConnectionAgent) syncPreExistingRemoteIfcs() error {
 			} else {
 				if oldLocalIfc, oldLocalIfcExists := ca.getLocalIfc(nsn); oldLocalIfcExists {
 					for i, err := 1, ca.netFabric.DeleteLocalIfc(oldLocalIfc); err != nil; i++ {
-						glog.V(3).Infof("deletion of orphan local interface %#+v failed: %s. Attempt nbr. %d",
+						glog.V(3).Infof("Deletion of orphan local interface %#+v failed: %s. Attempt nbr. %d",
 							oldLocalIfc,
 							err.Error(),
 							i)
 						time.Sleep(netFabricRetryPeriod)
 					}
-					glog.V(3).Infof("deleted orphan local interface %#+v", oldLocalIfc)
+					glog.V(3).Infof("Deleted orphan local interface %#+v", oldLocalIfc)
 				}
 				continue
 			}
@@ -389,13 +389,13 @@ func (ca *ConnectionAgent) syncPreExistingRemoteIfcs() error {
 		// owning the interface already has one. For all such cases we need to delete
 		// the interface.
 		for i, err := 1, ca.netFabric.DeleteRemoteIfc(aPreExistingRemoteIfc); err != nil; i++ {
-			glog.V(3).Infof("deletion of orphan remote interface %#+v failed: %s. Attempt nbr. %d",
+			glog.V(3).Infof("Deletion of orphan remote interface %#+v failed: %s. Attempt nbr. %d",
 				aPreExistingRemoteIfc,
 				err.Error(),
 				i)
 			time.Sleep(netFabricRetryPeriod)
 		}
-		glog.V(3).Infof("deleted orphan remote interface %#+v", aPreExistingRemoteIfc)
+		glog.V(3).Infof("Deleted orphan remote interface %#+v", aPreExistingRemoteIfc)
 	}
 
 	return nil
@@ -421,14 +421,14 @@ func (ca *ConnectionAgent) processQueueItem(attNSN k8stypes.NamespacedName) {
 		// ambiguous (e.g. more than one vni), or there's been a problem while processing
 		// it (e.g. Interface creation failed). We requeue the attachment reference so that
 		// it can be processed again and hopefully next time there will be no errors.
-		glog.Warningf("failed processing NetworkAttachment %s, requeuing (%d earlier requeues): %s",
+		glog.Warningf("Failed processing NetworkAttachment %s, requeuing (%d earlier requeues): %s",
 			attNSN,
 			requeues,
 			err.Error())
 		ca.queue.AddRateLimited(attNSN)
 		return
 	}
-	glog.V(4).Infof("finished NetworkAttachment %s with %d requeues", attNSN, requeues)
+	glog.V(4).Infof("Finished NetworkAttachment %s with %d requeues", attNSN, requeues)
 	ca.queue.Forget(attNSN)
 }
 
@@ -463,7 +463,7 @@ func (ca *ConnectionAgent) getAttachment(attNSN k8stypes.NamespacedName) (*netv1
 		// VNI with which it's seeing the attachment the attachment state will be
 		// "less ambiguous" (one less potential VNI) and a reference will be enqueued
 		// again triggering reconsideration of the attachment.
-		glog.V(4).Infof("attachment %s has inconsistent state, found in %d VN(I)s",
+		glog.V(4).Infof("Attachment %s has inconsistent state, found in %d VN(I)s",
 			attNSN,
 			nbrOfVNIs)
 		return nil, false
@@ -490,7 +490,7 @@ func (ca *ConnectionAgent) getAttachment(attNSN k8stypes.NamespacedName) (*netv1
 		(localAttCacheLookupErr != nil && !k8serrors.IsNotFound(localAttCacheLookupErr)):
 		// If we're here at least one of the two lookups failed. This should
 		// never happen. No point in retrying.
-		glog.V(1).Infof("attempt to retrieve attachment %s with lister failed: %s. This should never happen, hence a reference to %s will not be requeued",
+		glog.V(1).Infof("Attempt to retrieve attachment %s with lister failed: %s. This should never happen, hence a reference to %s will not be requeued",
 			attNSN,
 			aggregateErrors("\n\t", remAttCacheLookupErr, localAttCacheLookupErr).Error(),
 			attNSN)
@@ -500,7 +500,7 @@ func (ca *ConnectionAgent) getAttachment(attNSN k8stypes.NamespacedName) (*netv1
 		// this will cause a reference to be enqueued, so it will be processed
 		// again when the ambiguity has been resolved (assuming it has not been
 		// seen with other VNIs meanwhile).
-		glog.V(4).Infof("att %s has inconsistent state: found both in local atts cache and remote atts cache for VNI %d",
+		glog.V(4).Infof("Att %s has inconsistent state: found both in local atts cache and remote atts cache for VNI %d",
 			attNSN,
 			vni)
 	case attAsLocal != nil && attAsRemote == nil:
@@ -571,7 +571,7 @@ func (ca *ConnectionAgent) processExistingAtt(att *netv1a1.NetworkAttachment) er
 		if err != nil {
 			return err
 		}
-		glog.V(3).Infof("updated att %s status with hostIP: %s, ifcName: %s",
+		glog.V(3).Infof("Updated att %s status with hostIP: %s, ifcName: %s",
 			attNSN,
 			updatedAtt.Status.HostIP,
 			updatedAtt.Status.IfcName)
@@ -818,7 +818,7 @@ func (ca *ConnectionAgent) removeAttFromVNState(attName string, vni uint32) *vnS
 // can be deleted.
 func (ca *ConnectionAgent) clearVNResources(vnState *vnState, lastAttName string, vni uint32) {
 	close(vnState.remoteAttsInformerStopCh)
-	glog.V(2).Infof("networkAttachment %s/%s was the last local with vni %d: remote attachments informer was stopped",
+	glog.V(2).Infof("NetworkAttachment %s/%s was the last local with vni %d: remote attachments informer was stopped",
 		vnState.namespace,
 		lastAttName,
 		vni)
@@ -862,7 +862,7 @@ func (ca *ConnectionAgent) initVNState(vni uint32, namespace string) *vnState {
 
 func (ca *ConnectionAgent) onRemoteAttAdded(obj interface{}) {
 	att := obj.(*netv1a1.NetworkAttachment)
-	glog.V(5).Infof("remote NetworkAttachments cache for VNI %d: notified of addition of %#+v",
+	glog.V(5).Infof("Remote NetworkAttachments cache for VNI %d: notified of addition of %#+v",
 		att.Status.AddressVNI,
 		att)
 	attNSN := kosctlrutils.AttNSN(att)
@@ -873,7 +873,7 @@ func (ca *ConnectionAgent) onRemoteAttAdded(obj interface{}) {
 func (ca *ConnectionAgent) onRemoteAttUpdated(oldObj, newObj interface{}) {
 	oldAtt := oldObj.(*netv1a1.NetworkAttachment)
 	newAtt := newObj.(*netv1a1.NetworkAttachment)
-	glog.V(5).Infof("remote NetworkAttachments cache for VNI %d: notified of update from %#+v to %#+v",
+	glog.V(5).Infof("Remote NetworkAttachments cache for VNI %d: notified of update from %#+v to %#+v",
 		newAtt.Status.AddressVNI,
 		oldAtt,
 		newAtt)
@@ -883,7 +883,7 @@ func (ca *ConnectionAgent) onRemoteAttUpdated(oldObj, newObj interface{}) {
 func (ca *ConnectionAgent) onRemoteAttRemoved(obj interface{}) {
 	peeledObj := kosctlrutils.Peel(obj)
 	att := peeledObj.(*netv1a1.NetworkAttachment)
-	glog.V(5).Infof("remote NetworkAttachments cache for VNI %d: notified of deletion of %#+v",
+	glog.V(5).Infof("Remote NetworkAttachments cache for VNI %d: notified of deletion of %#+v",
 		att.Status.AddressVNI,
 		att)
 	attNSN := kosctlrutils.AttNSN(att)
