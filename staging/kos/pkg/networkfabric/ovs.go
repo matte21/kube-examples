@@ -136,7 +136,7 @@ func (f *ovsFabric) newCreateBridgeCmd() *exec.Cmd {
 		"set",
 		"bridge",
 		f.bridge,
-		"protocols=OpenFlow10,OpenFlow11,OpenFlow12,OpenFlow13,OpenFlow14,OpenFlow15,OpenFlow16")
+		"protocols=OpenFlow10,OpenFlow11,OpenFlow12,OpenFlow13,OpenFlow14,OpenFlow15")
 }
 
 func (f *ovsFabric) newAddVTEPCmd() *exec.Cmd {
@@ -316,16 +316,15 @@ func (f *ovsFabric) deleteIfc(ifc string) error {
 
 func (f *ovsFabric) newCreateBridgeIfcCmd(ifc string, mac net.HardwareAddr) *exec.Cmd {
 	return exec.Command("ovs-vsctl",
-		"--may-exist",
 		"add-port",
 		f.bridge,
 		ifc,
 		"--",
 		"set",
 		"interface",
-		"ifc",
+		ifc,
 		"type=internal",
-		"mac=02:00:00:00:00:13")
+		fmt.Sprintf("mac=%s", strings.Replace(mac.String(), ":", "\\:", -1)))
 }
 
 func (f *ovsFabric) newDeleteBridgePortCmd(ifc string) *exec.Cmd {
@@ -336,11 +335,10 @@ func (f *ovsFabric) newDeleteBridgePortCmd(ifc string) *exec.Cmd {
 }
 
 func (f *ovsFabric) newAddFlowsInTransactionCmd(flows ...string) *exec.Cmd {
-	return exec.Command("ovs-ofctl",
-		"--bundle",
-		"add-flows",
-		f.bridge,
-		"<<EOF"+newLine+strings.Join(flows, newLine)+"EOF")
+	// the --bundle flag makes the addition of the flows transactional
+	cmd := exec.Command("ovs-ofctl", "--bundle", "add-flows", f.bridge, "-")
+	cmd.Stdin = strings.NewReader(strings.Join(flows, newLine) + newLine)
+	return cmd
 }
 
 func (f *ovsFabric) DeleteLocalIfc(ifc NetworkInterface) error {
@@ -378,11 +376,10 @@ func (f *ovsFabric) deleteLocalIfcFlows(ofport uint16, tunID uint32, dlDst net.H
 }
 
 func (f *ovsFabric) newDelFlowsInTransactionCmd(flows ...string) *exec.Cmd {
-	return exec.Command("ovs-ofctl",
-		"--bundle",
-		"del-flows",
-		f.bridge,
-		"<<EOF"+newLine+strings.Join(flows, newLine)+"EOF")
+	// the --bundle flag makes the deletion of the flows transactional
+	cmd := exec.Command("ovs-ofctl", "--bundle", "del-flows", f.bridge, "-")
+	cmd.Stdin = strings.NewReader(strings.Join(flows, newLine) + newLine)
+	return cmd
 }
 
 func (f *ovsFabric) CreateRemoteIfc(ifc NetworkInterface) error {
@@ -402,7 +399,7 @@ func (f *ovsFabric) DeleteRemoteIfc(ifc NetworkInterface) error {
 }
 
 func (f *ovsFabric) ListLocalIfcs() ([]NetworkInterface, error) {
-	// TODO implement
+	// TODO list interfaces and ofport
 	return nil, nil
 }
 
@@ -419,7 +416,7 @@ func (f *ovsFabric) plugIfcInBridge(ifc string) error {
 			ifc,
 			f.bridge,
 			err.Error(),
-			string(out))
+			strings.TrimRight(string(out), newLine))
 	}
 
 	return nil
@@ -520,7 +517,7 @@ func newAddFlowToBridgeErr(flow, bridge string, msgs ...string) *addFlowToBridge
 	return &addFlowToBridgeErr{
 		flow:   flow,
 		bridge: bridge,
-		msg:    strings.TrimRight(strings.Join(msgs, " "), " "),
+		msg:    strings.Join(msgs, " "),
 	}
 }
 
@@ -539,7 +536,7 @@ func newAddFlowsInTransactionErr(flows, bridge string, msgs ...string) *addFlowI
 	return &addFlowInTransactionErr{
 		flows:  flows,
 		bridge: bridge,
-		msg:    strings.TrimRight(strings.Join(msgs, " "), " "),
+		msg:    strings.Join(msgs, " "),
 	}
 }
 
@@ -558,6 +555,6 @@ func newDelFlowsErr(flows, bridge string, msgs ...string) *delFlowsErr {
 	return &delFlowsErr{
 		flows:  flows,
 		bridge: bridge,
-		msg:    strings.TrimRight(strings.Join(msgs, " "), " "),
+		msg:    strings.Join(msgs, " "),
 	}
 }
