@@ -20,6 +20,9 @@ spec:
       - name: connection-agent
         image: DOCKER_PREFIX/kos-connection-agent:latest
         imagePullPolicy: Always
+        volumeMounts:
+        - name: ovs-socks-dir
+          mountPath: /var/run/openvswitch
         env:
         - name: NODE_NAME
           valueFrom:
@@ -34,5 +37,10 @@ spec:
         - -v=5
         - -nodename=$(NODE_NAME)
         - -hostip=$(HOST_IP)
-        - -netfabric=logger
         - -allowed-programs=/usr/local/kos/bin/TestByPing,/usr/local/kos/bin/RemoveNetNS
+        - -netfabric=ovs
+      volumes:
+        - name: ovs-socks-dir
+          hostPath:
+            path: /var/run/openvswitch
+            type: Directory
