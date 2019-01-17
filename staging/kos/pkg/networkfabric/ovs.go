@@ -15,11 +15,8 @@ limitations under the License.
 */
 package networkfabric
 
-// TODO add flows in single transaction
 // TODO refactor creation of commands and flows - use templates if it helps
 // TODO During creation/config ifcs, add check to make sure config is similar to what we want (need to think whether we actually need this, I think not)
-// TODO add protocols at bridge creation time
-// TODO consider what happens if we add an itnerface to an already existing bridge
 
 import (
 	"fmt"
@@ -285,7 +282,10 @@ func (f *ovsFabric) deleteIfc(ifc string) error {
 }
 
 func (f *ovsFabric) newCreateBridgeIfcCmd(ifc string, mac net.HardwareAddr) *exec.Cmd {
+	// TODO think thoroughly if we need more than just the may exist flag
+	// (e.g. detecting the case and reacting appropriately)
 	return exec.Command("ovs-vsctl",
+		"--may-exist",
 		"add-port",
 		f.bridge,
 		ifc,
