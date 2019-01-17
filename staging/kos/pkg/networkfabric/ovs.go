@@ -88,7 +88,7 @@ func (f *ovsFabric) initBridge() error {
 }
 
 func (f *ovsFabric) createBridge() error {
-	createBridgeCmd := newCreateBridgeCmd(f.bridge)
+	createBridgeCmd := f.newCreateBridgeCmd()
 
 	if out, err := createBridgeCmd.CombinedOutput(); err != nil {
 		return fmt.Errorf("failed to create bridge \"%s\": %s: %s",
@@ -102,7 +102,7 @@ func (f *ovsFabric) createBridge() error {
 }
 
 func (f *ovsFabric) addVTEP() error {
-	addVTEPCmd := newAddVTEPCmd(f.bridge)
+	addVTEPCmd := f.newAddVTEPCmd()
 
 	if out, err := addVTEPCmd.CombinedOutput(); err != nil {
 		return fmt.Errorf("failed to add VTEP port and interface to bridge \"%s\": %s: %s",
@@ -127,7 +127,7 @@ func (f *ovsFabric) addDefaultFlows() error {
 	return nil
 }
 
-func (f *ovsFabric) newCreateBridgeCmd(bridge string) *exec.Cmd {
+func (f *ovsFabric) newCreateBridgeCmd() *exec.Cmd {
 	return exec.Command("ovs-vsctl",
 		"--may-exist",
 		"add-br",
@@ -139,11 +139,11 @@ func (f *ovsFabric) newCreateBridgeCmd(bridge string) *exec.Cmd {
 		"protocols=OpenFlow10,OpenFlow11,OpenFlow12,OpenFlow13,OpenFlow14,OpenFlow15,OpenFlow16")
 }
 
-func newAddVTEPCmd(bridge string) *exec.Cmd {
+func (f *ovsFabric) newAddVTEPCmd() *exec.Cmd {
 	return exec.Command("ovs-vsctl",
 		"--may-exist",
 		"add-port",
-		bridge,
+		f.bridge,
 		vtep,
 		"--",
 		"set",
@@ -155,7 +155,7 @@ func newAddVTEPCmd(bridge string) *exec.Cmd {
 }
 
 func (f *ovsFabric) getIfcOfport(ifc string) (uint16, error) {
-	getIfcOfportCmd := newGetIfcOfportCmd(ifc)
+	getIfcOfportCmd := f.newGetIfcOfportCmd(ifc)
 
 	outBytes, err := getIfcOfportCmd.CombinedOutput()
 	out := strings.TrimRight(string(outBytes), newLine)
@@ -172,7 +172,7 @@ func (f *ovsFabric) getIfcOfport(ifc string) (uint16, error) {
 
 func (f *ovsFabric) addDefaultResubmitToT1Flow() error {
 	resubmitToT1 := "table=0,actions=resubmit(,1)"
-	addResubmitToT1Cmd := newAddFlowToBridgeCmd(f.bridge, resubmitToT1)
+	addResubmitToT1Cmd := f.newAddFlowToBridgeCmd(resubmitToT1)
 
 	if out, err := addResubmitToT1Cmd.CombinedOutput(); err != nil {
 		return newAddFlowToBridgeErr(resubmitToT1,
@@ -187,7 +187,7 @@ func (f *ovsFabric) addDefaultResubmitToT1Flow() error {
 
 func (f *ovsFabric) addDefaultDropFlow() error {
 	defaultDrop := "table=1,actions=drop"
-	addDefaultDropCmd := newAddFlowToBridgeCmd(f.bridge, defaultDrop)
+	addDefaultDropCmd := f.newAddFlowToBridgeCmd(defaultDrop)
 
 	if out, err := addDefaultDropCmd.CombinedOutput(); err != nil {
 		return newAddFlowToBridgeErr(defaultDrop,
@@ -200,7 +200,7 @@ func (f *ovsFabric) addDefaultDropFlow() error {
 	return nil
 }
 
-func newGetIfcOfportCmd(ifc string) *exec.Cmd {
+func (f *ovsFabric) newGetIfcOfportCmd(ifc string) *exec.Cmd {
 	return exec.Command("ovs-vsctl",
 		"get",
 		"interface",
@@ -217,8 +217,8 @@ func parseOfport(ofport string) (uint16, error) {
 	return uint16(ofp), nil
 }
 
-func newAddFlowToBridgeCmd(bridge, flow string) *exec.Cmd {
-	return exec.Command("ovs-ofctl", "add-flow", bridge, flow)
+func (f *ovsFabric) newAddFlowToBridgeCmd(flow string) *exec.Cmd {
+	return exec.Command("ovs-ofctl", "add-flow", f.bridge, flow)
 }
 
 func (f *ovsFabric) Name() string {
@@ -284,7 +284,7 @@ func (f *ovsFabric) addLocalIfcFlows(ofport uint16, tunID uint32, dlDst net.Hard
 }
 
 func (f *ovsFabric) createIfc(ifc string, mac net.HardwareAddr) error {
-	createIfc := newCreateBridgeIfcCmd(f.bridge, ifc, mac)
+	createIfc := f.newCreateBridgeIfcCmd(ifc, mac)
 
 	if out, err := createIfc.CombinedOutput(); err != nil {
 		return fmt.Errorf("failed to create local ifc %s with MAC %s and plug it into bridge %s: %s: %s",
@@ -301,7 +301,7 @@ func (f *ovsFabric) createIfc(ifc string, mac net.HardwareAddr) error {
 func (f *ovsFabric) deleteIfc(ifc string) error {
 	// the interface is managed by OvS (interface type internal), hence deleting
 	// the bridge port it is associated with automatically deletes it
-	deleteIfc := newDeleteBridgePortCmd(f.bridge, ifc)
+	deleteIfc := f.newDeleteBridgePortCmd(ifc)
 
 	if out, err := deleteIfc.CombinedOutput(); err != nil {
 		return fmt.Errorf("failed to delete local ifc %s attached to bridge %s: %s: %s",
@@ -314,11 +314,11 @@ func (f *ovsFabric) deleteIfc(ifc string) error {
 	return nil
 }
 
-func newCreateBridgeIfcCmd(bridge, ifc string, mac net.HardwareAddr) *exec.Cmd {
+func (f *ovsFabric) newCreateBridgeIfcCmd(ifc string, mac net.HardwareAddr) *exec.Cmd {
 	return exec.Command("ovs-vsctl",
 		"--may-exist",
 		"add-port",
-		bridge,
+		f.bridge,
 		ifc,
 		"--",
 		"set",
@@ -328,10 +328,10 @@ func newCreateBridgeIfcCmd(bridge, ifc string, mac net.HardwareAddr) *exec.Cmd {
 		"mac=02:00:00:00:00:13")
 }
 
-func newDeleteBridgePortCmd(bridge, ifc string) *exec.Cmd {
+func (f *ovsFabric) newDeleteBridgePortCmd(ifc string) *exec.Cmd {
 	return exec.Command("ovs-vsctl",
 		"del-port",
-		bridge,
+		f.bridge,
 		ifc)
 }
 
@@ -412,7 +412,7 @@ func (f *ovsFabric) ListRemoteIfcs() ([]NetworkInterface, error) {
 }
 
 func (f *ovsFabric) plugIfcInBridge(ifc string) error {
-	plugIfcInBridgeCmd := newPlugIfcInBridgeCmd(f.bridge, ifc)
+	plugIfcInBridgeCmd := f.newPlugIfcInBridgeCmd(ifc)
 
 	if out, err := plugIfcInBridgeCmd.CombinedOutput(); err != nil {
 		return fmt.Errorf("failed to plug ifc %s into bridge %s: %s: %s",
@@ -432,7 +432,7 @@ func (f *ovsFabric) addRemoteARPResolutionFlow(tunID uint32, arpTPA, tunDst net.
 		tunDst,
 		f.vtepOfport)
 
-	addRemoteARPResolutionFlowCmd := newAddFlowToBridgeCmd(f.bridge, remoteARPResolution)
+	addRemoteARPResolutionFlowCmd := f.newAddFlowToBridgeCmd(remoteARPResolution)
 	if out, err := addRemoteARPResolutionFlowCmd.CombinedOutput(); err != nil {
 		return newAddFlowToBridgeErr(remoteARPResolution,
 			f.bridge,
@@ -450,7 +450,7 @@ func (f *ovsFabric) addRemoteDlTrafficFlow(tunID uint32, dlDst net.HardwareAddr,
 		tunDst,
 		f.vtepOfport)
 
-	addRemoteDlTrafficFlowCmd := newAddFlowToBridgeCmd(f.bridge, remoteDlTraffic)
+	addRemoteDlTrafficFlowCmd := f.newAddFlowToBridgeCmd(remoteDlTraffic)
 	if out, err := addRemoteDlTrafficFlowCmd.CombinedOutput(); err != nil {
 		return newAddFlowToBridgeErr(remoteDlTraffic,
 			f.bridge,
@@ -466,7 +466,7 @@ func (f *ovsFabric) delRemoteARPResolutionFlow(tunID uint32, arpTPA net.IP) erro
 		tunID,
 		arpTPA)
 
-	delRemoteARPResolutionFlowCmd := newDelFlowFromBridgeCmd(f.bridge, remoteARPResolution)
+	delRemoteARPResolutionFlowCmd := f.newDelFlowFromBridgeCmd(remoteARPResolution)
 	if out, err := delRemoteARPResolutionFlowCmd.CombinedOutput(); err != nil {
 		return newDelFlowsErr(remoteARPResolution,
 			f.bridge,
@@ -482,7 +482,7 @@ func (f *ovsFabric) delRemoteDlTrafficFlow(tunID uint32, dlDst net.HardwareAddr)
 		tunID,
 		dlDst)
 
-	delDlTrafficFlowCmd := newDelFlowFromBridgeCmd(f.bridge, dlTraffic)
+	delDlTrafficFlowCmd := f.newDelFlowFromBridgeCmd(dlTraffic)
 	if out, err := delDlTrafficFlowCmd.CombinedOutput(); err != nil {
 		return newDelFlowsErr(dlTraffic,
 			f.bridge,
@@ -493,17 +493,16 @@ func (f *ovsFabric) delRemoteDlTrafficFlow(tunID uint32, dlDst net.HardwareAddr)
 	return nil
 }
 
-func newDelFlowFromBridgeCmd(bridge, flow string) *exec.Cmd {
-	return exec.Command("ovs-ofctl", "del-flows", bridge, flow)
+func (f *ovsFabric) newDelFlowFromBridgeCmd(flow string) *exec.Cmd {
+	return exec.Command("ovs-ofctl", "del-flows", f.bridge, flow)
 }
 
-func newPlugIfcInBridgeCmd(bridge, ifc string) *exec.Cmd {
+func (f *ovsFabric) newPlugIfcInBridgeCmd(ifc string) *exec.Cmd {
 	return exec.Command("ovs-vsctl",
 		"--may-exist",
 		"add-port",
-		bridge,
-		ifc,
-	)
+		f.bridge,
+		ifc)
 }
 
 type addFlowToBridgeErr struct {
