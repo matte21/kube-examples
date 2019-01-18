@@ -1,5 +1,5 @@
 /*
-Copyright 2018 The Kubernetes Authors.
+Copyright 2019 The Kubernetes Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -23,6 +23,8 @@ import metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 // NetworkAttachmentList is a list of NetworkAttachment objects.
 type NetworkAttachmentList struct {
 	metav1.TypeMeta `json:",inline"`
+
+	// +optional
 	metav1.ListMeta `json:"metadata,omitempty" protobuf:"bytes,1,opt,name=metadata"`
 
 	Items []NetworkAttachment `json:"items" protobuf:"bytes,2,rep,name=items"`
@@ -34,49 +36,131 @@ type NetworkAttachmentSpec struct {
 
 	// Subnet is the object name of the subnet of this attachment
 	Subnet string `json:"subnet" protobuf:"bytes,2,name=subnet"`
+
+	// PostCreateExec is a command to exec inside the attachment
+	// host's connection agent container after the Linux network
+	// interface is created.  Precisely: if a local NetworkAttachment
+	// is in the network fabric, has a non-empty PostCreateExec, and
+	// that command has not yet been launched then the command is
+	// launched and, upon completion, the results reported through the
+	// NetworkAttachmentStatus PostCreateExecReport field.  The
+	// connection agent is configured with a set of allowed programs
+	// to invoke.  If a non-allowed program is requested then the
+	// result will report an error.  Each argument is subjected to a
+	// very restricted form of variable expansion.  The only allowed
+	// syntax is `${variableName}` and the only variables are
+	// `ifname`, `ipv4`, and `mac`.
+	// +optional
+	// +patchStrategy=replace
+	PostCreateExec []string `json:"postCreateExec,omitempty" protobuf:"bytes,3,opt,name=postCreateExec"`
+
+	// PostDeleteExec is a command to exec inside the attachment
+	// host's connection agent container after the attachment's Linux
+	// network interface is deleted.  Precisely: if a local
+	// NetworkAttachment is not in the network fabric, has a
+	// PostCreateExec that has been started, has a non-empty
+	// PostDeleteExec, and the PostCreateExec has not yet been
+	// launched then that command will be launched.  The result is not
+	// reported in the status of the NetworkAttachment (it may be
+	// deleted by then).  The same restrictions and variable
+	// expansions as for PostCreateExec are applied.
+	// +optional
+	// +patchStrategy=replace
+	PostDeleteExec []string `json:"postDeleteExec,omitempty" protobuf:"bytes,4,opt,name=postDeleteExec"`
 }
 
 type NetworkAttachmentStatus struct {
+	// +optional
 	Errors NetworkAttachmentErrors `json:"errors,omitempty" protobuf:"bytes,1,opt,name=errors"`
 
 	// LockUID is the UID of the IPLock object holding this attachment's
 	// IP address, or the empty string when there is no address.
 	// This field is a private detail of the implementation, not really
 	// part of the public API.
+	// +optional
 	LockUID string `json:"lockUID,omitempty" protobuf:"bytes,2,opt,name=lockUID"`
-
 	// AddressVNI is the VNI associated with this attachment's
 	// IP address assignment, or the empty string when there is no address.
+	// +optional
 	AddressVNI uint32 `json:"addressVNI,omitempty" protobuf:"bytes,3,opt,name=addressVNI"`
 
-	// IPv4 is non-empty when an address has been assigned
+	// IPv4 is non-empty when an address has been assigned.
+	// +optional
 	IPv4 string `json:"ipv4,omitempty" protobuf:"bytes,4,opt,name=ipv4"`
+
+	// MACAddress is non-empty while there is a corresponding Linux
+	// network interface on the host.
+	// +optional
+	MACAddress string `json:"macAddress,omitempty" protobuf:"bytes,5,opt,name=macAddress"`
 
 	// IfcName is the name of the network interface that implements this
 	// attachment on its node, or the empty string to indicate no
 	// implementation.
-	IfcName string `json:"ifcName,omitempty" protobuf:"bytes,5,opt,name=ifcname"`
-
+	// +optional
+	IfcName string `json:"ifcName,omitempty" protobuf:"bytes,6,opt,name=ifcname"`
 	// HostIP is the IP address of the node the attachment is bound to.
-	HostIP string `json:"hostIP,omitempty" protobuf:"bytes,6,opt,name=hostIP"`
+	// +optional
+	HostIP string `json:"hostIP,omitempty" protobuf:"bytes,7,opt,name=hostIP"`
+
+	// PostCreateExecReport, if non-nil, reports on the run of the
+	// PostCreateExec.
+	// +optional
+	PostCreateExecReport *ExecReport `json:"postCreateExecReport,omitempty" protobuf:"bytes,8,opt,name=postCreateExecReport"`
 }
 
 type NetworkAttachmentErrors struct {
-	// IPAM holds errors about the IP Address Management for this attachment
+	// IPAM holds errors about the IP Address Management for this attachment.
+	// +optional
+	// +patchStrategy=replace
 	IPAM []string `json:"ipam,omitempty" protobuf:"bytes,1,opt,name=ipam"`
 
-	// Host holds errors from the node where this attachment is placed
+	// Host holds errors from the node where this attachment is placed.
+	// +optional
+	// +patchStrategy=replace
 	Host []string `json:"host,omitempty" protobuf:"bytes,2,opt,name=host"`
+}
+
+// ExecReport reports on what happened when a command was execd.
+type ExecReport struct {
+	// ExitStatus is the Linux exit status from the command, or a
+	// negative number to signal a prior problem (detailed in StdErr).
+	ExitStatus int32 `json:"exitStatus" protobuf:"bytes,1,name=exitStatus"`
+
+	StartTime metav1.Time `json:"startTime,omitempty" protobuf:"bytes,2,name=startTime"`
+
+	StopTime metav1.Time `json:"stopTime,omitempty" protobuf:"bytes,3,name=stopTime"`
+
+	StdOut string `json:"stdOut" protobuf:"bytes,4,name=stdOut"`
+	StdErr string `json:"stdErr" protobuf:"bytes,5,name=stdErr"`
+}
+
+// Equal tests whether the two referenced ExecReports say the same thing
+func (x *ExecReport) Equal(y *ExecReport) bool {
+	if x == y {
+		return true
+	}
+	if x == nil || y == nil {
+		return false
+	}
+	return x.ExitStatus == y.ExitStatus &&
+		x.StdOut == y.StdOut &&
+		x.StdErr == y.StdErr &&
+		x.StartTime.Time.Equal(y.StartTime.Time) &&
+		x.StopTime.Time.Equal(y.StopTime.Time)
 }
 
 // +genclient
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
 
 type NetworkAttachment struct {
-	metav1.TypeMeta   `json:",inline"`
+	metav1.TypeMeta `json:",inline"`
+
+	// +optional
 	metav1.ObjectMeta `json:"metadata,omitempty" protobuf:"bytes,1,opt,name=metadata"`
 
-	Spec   NetworkAttachmentSpec   `json:"spec" protobuf:"bytes,2,name=spec"`
+	Spec NetworkAttachmentSpec `json:"spec" protobuf:"bytes,2,name=spec"`
+
+	// +optional
 	Status NetworkAttachmentStatus `json:"status,omitempty" protobuf:"bytes,3,opt,name=status"`
 }
 
@@ -85,7 +169,7 @@ type NetworkAttachment struct {
 // - have disjoint IP ranges, and
 // - are in the same Kubernetes API namespace.
 type SubnetSpec struct {
-	// IPv4 is the CIDR notation for the v4 address range of this subnet
+	// IPv4 is the CIDR notation for the v4 address range of this subnet.
 	IPv4 string `json:"ipv4" protobuf:"bytes,1,name=ipv4"`
 
 	// VNI identifies the virtual network.
@@ -94,6 +178,9 @@ type SubnetSpec struct {
 }
 
 type SubnetStatus struct {
+	// Errors are the complaints, if any, from the IPAM controller.
+	// +optional
+	// +patchStrategy=replace
 	Errors []string `json:"errors,omitempty" protobuf:"bytes,1,opt,name=errors"`
 }
 
@@ -101,10 +188,14 @@ type SubnetStatus struct {
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
 
 type Subnet struct {
-	metav1.TypeMeta   `json:",inline"`
+	metav1.TypeMeta `json:",inline"`
+
+	// +optional
 	metav1.ObjectMeta `json:"metadata,omitempty" protobuf:"bytes,1,opt,name=metadata"`
 
-	Spec   SubnetSpec   `json:"spec" protobuf:"bytes,2,name=spec"`
+	Spec SubnetSpec `json:"spec" protobuf:"bytes,2,name=spec"`
+
+	// +optional
 	Status SubnetStatus `json:"status,omitempty" protobuf:"bytes,3,opt,name=status"`
 }
 
@@ -113,6 +204,8 @@ type Subnet struct {
 // SubnetList is a list of Subnet objects.
 type SubnetList struct {
 	metav1.TypeMeta `json:",inline"`
+
+	// +optional
 	metav1.ListMeta `json:"metadata,omitempty" protobuf:"bytes,1,opt,name=metadata"`
 
 	Items []Subnet `json:"items" protobuf:"bytes,2,rep,name=items"`
@@ -126,7 +219,9 @@ type IPLockSpec struct {
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
 
 type IPLock struct {
-	metav1.TypeMeta   `json:",inline"`
+	metav1.TypeMeta `json:",inline"`
+
+	// +optional
 	metav1.ObjectMeta `json:"metadata,omitempty" protobuf:"bytes,1,opt,name=metadata"`
 
 	Spec IPLockSpec `json:"spec" protobuf:"bytes,2,name=spec"`
@@ -137,6 +232,8 @@ type IPLock struct {
 // IPLockList is a list of IPLock objects.
 type IPLockList struct {
 	metav1.TypeMeta `json:",inline"`
+
+	// +optional
 	metav1.ListMeta `json:"metadata,omitempty" protobuf:"bytes,1,opt,name=metadata"`
 
 	Items []IPLock `json:"items" protobuf:"bytes,2,rep,name=items"`
