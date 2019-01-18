@@ -2,9 +2,12 @@
 
 This example shows how to build a simple Software-Defined-Networking
 (SDN) control plane using Kubernetes API machinery to build the
-control plane and Kubernetes itself to host the control plane.
+control plane and Kubernetes itself to host the control plane.  The
+purpose is to explore how well suited the Kubernetes API-machinery is
+to building something other than Kubernetes.  Some interesting issues
+are surfaced in the discussions of the controllers here.
 
-The data plan is based on OVS.  Each node has an independent OVS
+The data plane is based on OVS.  Each node has an independent OVS
 installation.  The kube-based control plane distributes the needed
 information to each node.
 
@@ -36,13 +39,13 @@ This example adds the following to the Kubernetes cluster.
 
 - A Deployment of a controller that assigns IP addresses.
 
-- A DaemonSet of network agents that implement the node-local
+- A DaemonSet of connection agents that implement the node-local
   functionality of the SDN, by talking to the kube API machinery and
   the local networking implementation.
 
 - A local networking implementation that has no control plane
   relationship with its counterpart on any other node.  This is a code
-  library that has a golang interface and is compiled into the network
+  library that has a golang interface and is compiled into the connection
   agent.
 
 ## The SDN
@@ -147,7 +150,16 @@ object equals successfully taking the lock.  A lock object's
 `ObjectMeta.OwnerReferences` include a reference to the
 NetworkAttachment that holds the lock.
 
-This controller does not enforce or assume any connections between the
+Neither the IPAM controller nor the connection agent enforces any
+interlock between its actions and the lifecycle of any API object.
+Consequently, there can not be any fully effective enforcement of
+immutability of any field of any API object --- the client can always
+delete and object and create a replacement with the same name,
+possibly without the controller seeing any intermediate state.  Coping
+with all possible changes makes for complicated controller code.  Stay
+tuned for lifecycle interlocks.
+
+Neither controller enforces or assumes any connections between the
 lifecycles of NetworkAttachments and their Subnets; either can be
 created or deleted at any time.  There are, however, some intended
 consistency constraints between certain fields of certain objects.
@@ -155,7 +167,8 @@ The apiservers attempt to enforce this consistency, but this
 enforcement is necessarily imperfect because there are no ACID
 transactions that involve more than one object.  The controllers
 therefore must be prepared to react safely if and when an
-inconsistency gets through.
+inconsistency gets through.  Again, this makes for very complicated
+controller code and this area is still work in progress.
 
 As with any controller, one of the IP address controller's problems is
 how to avoid doing duplicate work while waiting for its earlier
@@ -172,33 +185,36 @@ NetworkAttachment created by the update that writes the assigned
 address into the status of the attachment object.  As long as the
 Subnet's ResourceVersion is unchanged and the attachment object's
 ResourceVersion is one of the two recorded, the record is valid and
-retained.
+retained.  However, this does not work well enough, because the
+connection agents also updates the NetworkAttachment objects.  This is
+still work in progress.
 
-## The Network Agent
+
+## The Connection Agent
 
 This is a controller that runs on each node and tells the local
 networking implementation what it needs to know.
 
-The most interesting problem faced by the network agent is how to stay
-informed about all the relevant NetworkAttachment objects and none of
-the irrelevant ones.  A NetworkAttachment object X is relevant to node
-N if and only if there exists a NetworkAttachment object Y such that
-X and Y have the same VNI and Y is on node N.
+The most interesting problem faced by the connection agent is how to
+stay informed about all the relevant NetworkAttachment objects and
+none of the irrelevant ones.  A NetworkAttachment object X is relevant
+to node N if and only if there exists a NetworkAttachment object Y
+such that X and Y have the same VNI and Y is on node N.
 
 The following approaches were considered, with the last one adopted.
 
-- A network agent has one Informer whose list&watch get all
+- A connection agent has one Informer whose list&watch get all
   NetworkAttachment objects from the apiservers and filtering is done
   on the client side.  This was rejected because it can impose a LOT
   more load on the apiservers and agents than necessary.
 
-- A network agent has one Informer whose list&watch filter based on
+- A connection agent has one Informer whose list&watch filter based on
   presence of a label specific to the agent's node, and there is a
   controller that adds the needed labels to the NetworkAttachment
   objects.  This was rejected because it involves a LOT of additional
   work to manage the labels.
 
-- A network agent has, at any given time, one Informer whose
+- A connection agent has, at any given time, one Informer whose
   list&watch filter based on testing whether the NetworkAttachment's
   VNI value is in the set of currently relevant VNIs.  Whenever that
   set changes, the old Informer is stopped and a new one is created.
@@ -206,12 +222,12 @@ The following approaches were considered, with the last one adopted.
   will produce largely redundant information, causing unnecessary load
   on the agents and the apiservers.
 
-- A network agent has, at any given time when the number of relevant
-  VNIs is R, 1+R Informers on NetworkAttachments.  For one of those
-  Informers, list&watch filter on whether `spec.node` identifies the
-  agent's node.  Each of the other Informers is specific to a VNI, and
-  that Informer's list&watch filter on whether `spec.vni` (yes, that's
-  denormalized data) equals the Informer's VNI.
+- A connection agent has, at any given time when the number of
+  relevant VNIs is R, 1+R Informers on NetworkAttachments.  For one of
+  those Informers, list&watch filter on whether `spec.node` identifies
+  the agent's node.  Each of the other Informers is specific to a VNI,
+  and that Informer's list&watch filter on whether `spec.vni` (yes,
+  that's denormalized data) equals the Informer's VNI.
 
-A network agent can and should be as selective regarding Subnets as
+A connection agent can and should be as selective regarding Subnets as
 regarding NetworkAttachments.
