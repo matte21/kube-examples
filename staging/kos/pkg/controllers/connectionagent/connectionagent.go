@@ -20,11 +20,14 @@ import (
 	"bytes"
 	"fmt"
 	gonet "net"
+	"net/http"
 	"strings"
 	"sync"
 	"time"
 
 	"github.com/golang/glog"
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	k8smetav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -70,6 +73,18 @@ const (
 	// netFabricRetryPeriod is the time we wait before retrying when an
 	// network fabric operation fails while handling pre-existing interfaces.
 	netFabricRetryPeriod = time.Second
+
+	// The HTTP port under which the scraping endpoint ("/metrics") is served.
+	// Pick an unusual one because the host's network namespace is used.
+	// See https://github.com/prometheus/prometheus/wiki/Default-port-allocations .
+	MetricsAddr = ":9365"
+
+	// The HTTP path under which the scraping endpoint ("/metrics") is served.
+	MetricsPath = "/metrics"
+
+	// The namespace and subsystem of the Prometheus metrics produced here
+	MetricsNamespace = "kos"
+	MetricsSubsystem = "agent"
 )
 
 // vnState stores all the state needed for a Virtual Network for
@@ -146,8 +161,9 @@ type ConnectionAgent struct {
 	nsnToVNStateVNIMutex sync.RWMutex
 	nsnToVNStateVNI      map[k8stypes.NamespacedName]uint32
 
-	nsnToLocalIfcMutex sync.RWMutex
-	nsnToLocalIfc      map[k8stypes.NamespacedName]netfabric.LocalNetIfc
+	nsnToLocalStateMutex      sync.RWMutex
+	nsnToLocalMainState       map[k8stypes.NamespacedName]LocalAttachmentMainState
+	nsnToPostCreateExecReport map[k8stypes.NamespacedName]*netv1a1.ExecReport
 
 	nsnToRemoteIfcMutex sync.RWMutex
 	nsnToRemoteIfc      map[k8stypes.NamespacedName]netfabric.RemoteNetIfc
@@ -166,6 +182,27 @@ type ConnectionAgent struct {
 	// nsnToVNIsMutex.
 	nsnToVNIsMutex sync.RWMutex
 	nsnToVNIs      map[k8stypes.NamespacedName]map[uint32]struct{}
+
+	// allowedPrograms is the values allowed to appear in the [0] of a
+	// slice to exec post create or delete.
+	allowedPrograms map[string]struct{}
+
+	attachmentExecDurationHistograms *prometheus.HistogramVec
+	attachmentExecStatusCounts       *prometheus.CounterVec
+}
+
+// LocalAttachmentMainState is the state in this agent for a local
+// NetworkAttachment that is implicitly locked by worker threads.
+type LocalAttachmentMainState struct {
+	netfabric.LocalNetIfc
+	PostDeleteExec []string
+}
+
+// LocalAttachmentState is all the state in this agent for a local
+// NetworkAttachment.
+type LocalAttachmentState struct {
+	LocalAttachmentMainState
+	PostCreateExecReport *netv1a1.ExecReport
 }
 
 // NewConnectionAgent returns a deactivated instance of a ConnectionAgent (neither
@@ -177,19 +214,43 @@ func NewConnectionAgent(localNodeName string,
 	workers int,
 	netFabric netfabric.Interface) *ConnectionAgent {
 
+	attachmentExecDurationHistograms := prometheus.NewHistogramVec(
+		prometheus.HistogramOpts{
+			Namespace:   MetricsNamespace,
+			Subsystem:   MetricsSubsystem,
+			Name:        "attachment_exec_duration_secs",
+			Help:        "Time to run attachment commands, in seconds",
+			Buckets:     []float64{-0.125, 0, 0.125, 0.25, 0.5, 1, 2, 4, 8, 16, 32, 64, 128, 256},
+			ConstLabels: map[string]string{"node": localNodeName},
+		},
+		[]string{"what"})
+	attachmentExecStatusCounts := prometheus.NewCounterVec(
+		prometheus.CounterOpts{
+			Namespace:   MetricsNamespace,
+			Subsystem:   MetricsSubsystem,
+			Name:        "attachment_exec_status_count",
+			Help:        "Counts of commands by what and exit status",
+			ConstLabels: map[string]string{"node": localNodeName},
+		},
+		[]string{"what", "exitStatus"})
+	prometheus.MustRegister(attachmentExecDurationHistograms, attachmentExecStatusCounts)
+
 	return &ConnectionAgent{
-		localNodeName:   localNodeName,
-		hostIP:          hostIP,
-		kcs:             kcs,
-		netv1a1Ifc:      kcs.NetworkV1alpha1(),
-		queue:           queue,
-		workers:         workers,
-		netFabric:       netFabric,
-		vniToVnState:    make(map[uint32]*vnState),
-		nsnToVNStateVNI: make(map[k8stypes.NamespacedName]uint32),
-		nsnToLocalIfc:   make(map[k8stypes.NamespacedName]netfabric.LocalNetIfc),
-		nsnToRemoteIfc:  make(map[k8stypes.NamespacedName]netfabric.RemoteNetIfc),
-		nsnToVNIs:       make(map[k8stypes.NamespacedName]map[uint32]struct{}),
+		localNodeName:                    localNodeName,
+		hostIP:                           hostIP,
+		kcs:                              kcs,
+		netv1a1Ifc:                       kcs.NetworkV1alpha1(),
+		queue:                            queue,
+		workers:                          workers,
+		netFabric:                        netFabric,
+		vniToVnState:                     make(map[uint32]*vnState),
+		nsnToVNStateVNI:                  make(map[k8stypes.NamespacedName]uint32),
+		nsnToLocalMainState:              make(map[k8stypes.NamespacedName]LocalAttachmentMainState),
+		nsnToPostCreateExecReport:        make(map[k8stypes.NamespacedName]*netv1a1.ExecReport),
+		nsnToRemoteIfc:                   make(map[k8stypes.NamespacedName]netfabric.RemoteNetIfc),
+		nsnToVNIs:                        make(map[k8stypes.NamespacedName]map[uint32]struct{}),
+		attachmentExecDurationHistograms: attachmentExecDurationHistograms,
+		attachmentExecStatusCounts:       attachmentExecStatusCounts,
 	}
 }
 
@@ -199,6 +260,12 @@ func NewConnectionAgent(localNodeName string,
 func (ca *ConnectionAgent) Run(stopCh <-chan struct{}) error {
 	defer k8sutilruntime.HandleCrash()
 	defer ca.queue.ShutDown()
+
+	// Serve Prometheus metrics
+	http.Handle("/metrics", promhttp.Handler())
+	go func() {
+		glog.Errorf("In-process HTTP server crashed: %s\n", http.ListenAndServe(MetricsAddr, nil).Error())
+	}()
 
 	ca.stopCh = stopCh
 	ca.initLocalAttsInformerAndLister()
@@ -298,11 +365,12 @@ func (ca *ConnectionAgent) syncPreExistingLocalIfcs() error {
 			// interface to the attachment state.
 			ifcOwnerAtt := ifcOwnerAtts[0].(*netv1a1.NetworkAttachment)
 			nsn := kosctlrutils.AttNSN(ifcOwnerAtt)
-			oldIfc, oldIfcExists := ca.getLocalIfc(nsn)
-			ca.assignLocalIfc(nsn, aPreExistingLocalIfc)
+			oldLocalState, oldIfcExists := ca.getLocalAttState(nsn)
+			ca.setLocalAttMainState(nsn, LocalAttachmentMainState{aPreExistingLocalIfc, ifcOwnerAtt.Spec.PostDeleteExec})
+			ca.setExecReport(nsn, ifcOwnerAtt.Status.PostCreateExecReport)
 			glog.V(3).Infof("Matched interface %#+v with local attachment %#+v", aPreExistingLocalIfc, ifcOwnerAtt)
 			if oldIfcExists {
-				aPreExistingLocalIfc = oldIfc
+				aPreExistingLocalIfc = oldLocalState.LocalNetIfc
 			} else {
 				continue
 			}
@@ -319,6 +387,9 @@ func (ca *ConnectionAgent) syncPreExistingLocalIfcs() error {
 				i)
 			time.Sleep(netFabricRetryPeriod)
 		}
+		// Do not run the PostDeleteExec, it probably would not work
+		// because the PostCreateExec ran in a different container if
+		// at all.
 		glog.V(3).Infof("Deleted orphan local interface %#+v", aPreExistingLocalIfc)
 	}
 
@@ -369,15 +440,19 @@ func (ca *ConnectionAgent) syncPreExistingRemoteIfcs() error {
 			if oldRemoteIfcExists {
 				aPreExistingRemoteIfc = oldRemoteIfc
 			} else {
-				if oldLocalIfc, oldLocalIfcExists := ca.getLocalIfc(nsn); oldLocalIfcExists {
-					for i, err := 1, ca.netFabric.DeleteLocalIfc(oldLocalIfc); err != nil; i++ {
+				if oldLocalState, oldLocalIfcExists := ca.getLocalAttState(nsn); oldLocalIfcExists {
+					for i, err := 1, ca.netFabric.DeleteLocalIfc(oldLocalState.LocalNetIfc); err != nil; i++ {
 						glog.V(3).Infof("Deletion of orphan local interface %#+v failed: %s. Attempt nbr. %d",
-							oldLocalIfc,
+							oldLocalState.LocalNetIfc,
 							err.Error(),
 							i)
 						time.Sleep(netFabricRetryPeriod)
 					}
-					glog.V(3).Infof("Deleted orphan local interface %#+v", oldLocalIfc)
+					// Do not run the PostDeleteExec, it probably
+					// would not work because the PostCreateExec ran
+					// in a different container if at all.
+					glog.V(3).Infof("Deleted orphan local interface %#+v", oldLocalState.LocalNetIfc)
+					// ?? unsetLocalAttMainState
 				}
 				continue
 			}
@@ -553,21 +628,29 @@ func (ca *ConnectionAgent) processExistingAtt(att *netv1a1.NetworkAttachment) er
 		attHostIP = gonet.ParseIP(att.Status.HostIP)
 	}
 	attGuestIP := gonet.ParseIP(att.Status.IPv4)
-	newLocalIfcName, err := ca.createOrUpdateIfc(attGuestIP,
+	macAddrS, ifcName, pcer, err := ca.createOrUpdateIfc(attGuestIP,
 		attHostIP,
 		attVNI,
-		attNSN)
+		attNSN,
+		att.Spec.PostCreateExec,
+		att.Spec.PostDeleteExec)
 	if err != nil {
 		return err
 	}
 
-	// If the attachment is local, update its status with the local host IP and
-	// the name of the interface which was created (if it has changed).
+	// If the attachment is not local then we are done.
+	if attNode != ca.localNodeName {
+		return nil
+	}
+	// The attachment is local, so make sure its status reflects the
+	// state held here
 	localHostIPStr := ca.hostIP.String()
-	if attNode == ca.localNodeName &&
-		(att.Status.HostIP != localHostIPStr || (newLocalIfcName != "" && newLocalIfcName != att.Status.IfcName)) {
+	if att.Status.HostIP != localHostIPStr ||
+		ifcName != att.Status.IfcName ||
+		macAddrS != att.Status.MACAddress ||
+		!pcer.Equal(att.Status.PostCreateExecReport) {
 
-		updatedAtt, err := ca.setAttStatus(att, newLocalIfcName)
+		updatedAtt, err := ca.setAttStatus(att, macAddrS, ifcName, pcer)
 		if err != nil {
 			return err
 		}
@@ -587,12 +670,13 @@ func (ca *ConnectionAgent) processDeletedAtt(attNSN k8stypes.NamespacedName) err
 		ca.unsetVNStateVNI(attNSN)
 	}
 
-	localIfc, attHasLocalIfc := ca.getLocalIfc(attNSN)
+	localState, attHasLocalIfc := ca.getLocalAttState(attNSN)
 	if attHasLocalIfc {
-		if err := ca.netFabric.DeleteLocalIfc(localIfc); err != nil {
+		if err := ca.netFabric.DeleteLocalIfc(localState.LocalNetIfc); err != nil {
 			return err
 		}
-		ca.unsetLocalIfc(attNSN)
+		ca.LaunchCommand(attNSN, &localState.LocalNetIfc, localState.PostDeleteExec, "postDelete", false)
+		ca.unsetLocalAttState(attNSN)
 		return nil
 	}
 
@@ -717,30 +801,32 @@ func (ca *ConnectionAgent) updateVNStateAfterAttDeparture(attName string, vni ui
 	ca.clearVNResources(vnState, attName, vni)
 }
 
-func (ca *ConnectionAgent) createOrUpdateIfc(attGuestIP, attHostIP gonet.IP,
-	attVNI uint32,
-	attNSN k8stypes.NamespacedName) (string, error) {
+// createOrUpdateIfc returns the MAC address, Linux interface name,
+// post-create exec report, and possibly an error
+func (ca *ConnectionAgent) createOrUpdateIfc(attGuestIP, attHostIP gonet.IP, attVNI uint32, attNSN k8stypes.NamespacedName, PostCreateExec, PostDeleteExec []string) (attMACStr, ifcName string, pcer *netv1a1.ExecReport, err error) {
 
 	attMAC := generateMACAddr(attVNI, attGuestIP)
-	oldLocalIfc, attHasLocalIfc := ca.getLocalIfc(attNSN)
+	attMACStr = attMAC.String()
+	ifcName = generateIfcName(attMAC)
+	oldLocalState, attHasLocalIfc := ca.getLocalAttState(attNSN)
 	oldRemoteIfc, attHasRemoteIfc := ca.getRemoteIfc(attNSN)
 	newIfcNeedsToBeCreated := (!attHasLocalIfc && !attHasRemoteIfc) ||
-		(attHasLocalIfc && ifcNeedsUpdate(oldLocalIfc.HostIP, attHostIP, oldLocalIfc.GuestMAC, attMAC)) ||
+		(attHasLocalIfc && ifcNeedsUpdate(oldLocalState.HostIP, attHostIP, oldLocalState.GuestMAC, attMAC)) ||
 		(attHasRemoteIfc && ifcNeedsUpdate(oldRemoteIfc.HostIP, attHostIP, oldRemoteIfc.GuestMAC, attMAC))
 
-	var newLocalIfcName string
 	if newIfcNeedsToBeCreated {
 		if attHasLocalIfc {
-			if err := ca.netFabric.DeleteLocalIfc(oldLocalIfc); err != nil {
-				return "", fmt.Errorf("update of network interface of attachment %s failed, old local interface %#+v could not be deleted: %s",
+			if err := ca.netFabric.DeleteLocalIfc(oldLocalState.LocalNetIfc); err != nil {
+				return "", "", nil, fmt.Errorf("update of network interface of attachment %s failed, old local interface %#+v could not be deleted: %s",
 					attNSN,
-					oldLocalIfc,
+					oldLocalState.LocalNetIfc,
 					err.Error())
 			}
-			ca.unsetLocalIfc(attNSN)
+			ca.LaunchCommand(attNSN, &oldLocalState.LocalNetIfc, oldLocalState.PostDeleteExec, "postDelete", false)
+			ca.unsetLocalAttState(attNSN)
 		} else if attHasRemoteIfc {
 			if err := ca.netFabric.DeleteRemoteIfc(oldRemoteIfc); err != nil {
-				return "", fmt.Errorf("update of network interface of attachment %s failed, old remote interface %#+v could not be deleted: %s",
+				return "", "", nil, fmt.Errorf("update of network interface of attachment %s failed, old remote interface %#+v could not be deleted: %s",
 					attNSN,
 					oldRemoteIfc,
 					err.Error())
@@ -749,21 +835,24 @@ func (ca *ConnectionAgent) createOrUpdateIfc(attGuestIP, attHostIP gonet.IP,
 		}
 
 		if attHostIP.Equal(ca.hostIP) {
-			newLocalIfc := netfabric.LocalNetIfc{
-				Name:     generateIfcName(attMAC),
-				VNI:      attVNI,
-				GuestMAC: attMAC,
-				GuestIP:  attGuestIP,
-				HostIP:   attHostIP,
+			newLocalState := LocalAttachmentMainState{
+				LocalNetIfc: netfabric.LocalNetIfc{
+					Name:     ifcName,
+					VNI:      attVNI,
+					GuestMAC: attMAC,
+					GuestIP:  attGuestIP,
+					HostIP:   attHostIP,
+				},
+				PostDeleteExec: PostDeleteExec,
 			}
-			if err := ca.netFabric.CreateLocalIfc(newLocalIfc); err != nil {
-				return "", fmt.Errorf("creation of local network interface of attachment %s failed, interface %#+v could not be created: %s",
+			if err := ca.netFabric.CreateLocalIfc(newLocalState.LocalNetIfc); err != nil {
+				return "", "", nil, fmt.Errorf("creation of local network interface of attachment %s failed, interface %#+v could not be created: %s",
 					attNSN,
-					newLocalIfc,
+					newLocalState.LocalNetIfc,
 					err.Error())
 			}
-			ca.assignLocalIfc(attNSN, newLocalIfc)
-			newLocalIfcName = newLocalIfc.Name
+			ca.setLocalAttMainState(attNSN, newLocalState)
+			pcer = ca.LaunchCommand(attNSN, &newLocalState.LocalNetIfc, PostCreateExec, "postCreateExec", true)
 		} else {
 			newRemoteIfc := netfabric.RemoteNetIfc{
 				VNI:      attVNI,
@@ -772,24 +861,27 @@ func (ca *ConnectionAgent) createOrUpdateIfc(attGuestIP, attHostIP gonet.IP,
 				HostIP:   attHostIP,
 			}
 			if err := ca.netFabric.CreateRemoteIfc(newRemoteIfc); err != nil {
-				return "", fmt.Errorf("creation of remote network interface of attachment %s failed, interface %#+v could not be created: %s",
+				return "", "", nil, fmt.Errorf("creation of remote network interface of attachment %s failed, interface %#+v could not be created: %s",
 					attNSN,
 					newRemoteIfc,
 					err.Error())
 			}
 			ca.assignRemoteIfc(attNSN, newRemoteIfc)
 		}
+	} else if attHasLocalIfc {
+		pcer = oldLocalState.PostCreateExecReport
 	}
 
-	return newLocalIfcName, nil
+	return
 }
 
-func (ca *ConnectionAgent) setAttStatus(att *netv1a1.NetworkAttachment,
-	ifcName string) (*netv1a1.NetworkAttachment, error) {
+func (ca *ConnectionAgent) setAttStatus(att *netv1a1.NetworkAttachment, macAddrS, ifcName string, pcer *netv1a1.ExecReport) (*netv1a1.NetworkAttachment, error) {
 
 	att2 := att.DeepCopy()
+	att2.Status.MACAddress = macAddrS
 	att2.Status.HostIP = ca.hostIP.String()
 	att2.Status.IfcName = ifcName
+	att2.Status.PostCreateExecReport = pcer
 	updatedAtt, err := ca.netv1a1Ifc.NetworkAttachments(att2.Namespace).Update(att2)
 	return updatedAtt, err
 }
@@ -891,17 +983,29 @@ func (ca *ConnectionAgent) onRemoteAttRemoved(obj interface{}) {
 	ca.queue.Add(attNSN)
 }
 
-func (ca *ConnectionAgent) getLocalIfc(nsn k8stypes.NamespacedName) (ifc netfabric.LocalNetIfc, ifcFound bool) {
-	ca.nsnToLocalIfcMutex.RLock()
-	defer ca.nsnToLocalIfcMutex.RUnlock()
-	ifc, ifcFound = ca.nsnToLocalIfc[nsn]
+func (ca *ConnectionAgent) getLocalAttState(nsn k8stypes.NamespacedName) (state LocalAttachmentState, ifcFound bool) {
+	ca.nsnToLocalStateMutex.RLock()
+	defer ca.nsnToLocalStateMutex.RUnlock()
+	state.LocalAttachmentMainState, ifcFound = ca.nsnToLocalMainState[nsn]
+	if ifcFound {
+		state.PostCreateExecReport = ca.nsnToPostCreateExecReport[nsn]
+	}
 	return
 }
 
-func (ca *ConnectionAgent) assignLocalIfc(nsn k8stypes.NamespacedName, ifc netfabric.LocalNetIfc) {
-	ca.nsnToLocalIfcMutex.Lock()
-	defer ca.nsnToLocalIfcMutex.Unlock()
-	ca.nsnToLocalIfc[nsn] = ifc
+func (ca *ConnectionAgent) setLocalAttMainState(nsn k8stypes.NamespacedName, state LocalAttachmentMainState) {
+	ca.nsnToLocalStateMutex.Lock()
+	defer ca.nsnToLocalStateMutex.Unlock()
+	ca.nsnToLocalMainState[nsn] = state
+}
+
+func (ca *ConnectionAgent) setExecReport(nsn k8stypes.NamespacedName, er *netv1a1.ExecReport) {
+	ca.nsnToLocalStateMutex.Lock()
+	defer ca.nsnToLocalStateMutex.Unlock()
+	_, ok := ca.nsnToLocalMainState[nsn]
+	if ok {
+		ca.nsnToPostCreateExecReport[nsn] = er
+	}
 }
 
 func (ca *ConnectionAgent) getRemoteIfc(nsn k8stypes.NamespacedName) (ifc netfabric.RemoteNetIfc, ifcFound bool) {
@@ -936,10 +1040,11 @@ func (ca *ConnectionAgent) setVNStateVNI(nsn k8stypes.NamespacedName, vni uint32
 	ca.nsnToVNStateVNI[nsn] = vni
 }
 
-func (ca *ConnectionAgent) unsetLocalIfc(nsn k8stypes.NamespacedName) {
-	ca.nsnToLocalIfcMutex.Lock()
-	defer ca.nsnToLocalIfcMutex.Unlock()
-	delete(ca.nsnToLocalIfc, nsn)
+func (ca *ConnectionAgent) unsetLocalAttState(nsn k8stypes.NamespacedName) {
+	ca.nsnToLocalStateMutex.Lock()
+	defer ca.nsnToLocalStateMutex.Unlock()
+	delete(ca.nsnToLocalMainState, nsn)
+	delete(ca.nsnToPostCreateExecReport, nsn)
 }
 
 func (ca *ConnectionAgent) unsetRemoteIfc(nsn k8stypes.NamespacedName) {

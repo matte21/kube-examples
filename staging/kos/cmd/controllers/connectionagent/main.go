@@ -32,6 +32,7 @@ import (
 
 	kosclientset "k8s.io/examples/staging/kos/pkg/client/clientset/versioned"
 	cactlr "k8s.io/examples/staging/kos/pkg/controllers/connectionagent"
+	_ "k8s.io/examples/staging/kos/pkg/controllers/workqueue_prometheus"
 	netfabric "k8s.io/examples/staging/kos/pkg/networkfabric"
 )
 
