@@ -15,9 +15,6 @@ limitations under the License.
 */
 package networkfabric
 
-// TODO review
-// TODO test and fix bugs
-
 import (
 	"bytes"
 	"encoding/binary"
@@ -104,7 +101,7 @@ func (f *ovsFabric) Name() string {
 	return ovs
 }
 
-func (f *ovsFabric) CreateLocalIfc(ifc NetworkInterface) (err error) {
+func (f *ovsFabric) CreateLocalIfc(ifc LocalNetIfc) (err error) {
 	if err = f.createIfc(ifc.Name, ifc.GuestMAC); err != nil {
 		return
 	}
@@ -137,7 +134,7 @@ func (f *ovsFabric) CreateLocalIfc(ifc NetworkInterface) (err error) {
 	return nil
 }
 
-func (f *ovsFabric) DeleteLocalIfc(ifc NetworkInterface) error {
+func (f *ovsFabric) DeleteLocalIfc(ifc LocalNetIfc) error {
 	ofport, err := f.getIfcOfport(ifc.Name)
 	if err != nil {
 		return err
@@ -154,15 +151,15 @@ func (f *ovsFabric) DeleteLocalIfc(ifc NetworkInterface) error {
 	return nil
 }
 
-func (f *ovsFabric) CreateRemoteIfc(ifc NetworkInterface) error {
+func (f *ovsFabric) CreateRemoteIfc(ifc RemoteNetIfc) error {
 	return f.addRemoteIfcFlows(ifc.VNI, ifc.GuestMAC, ifc.HostIP, ifc.GuestIP)
 }
 
-func (f *ovsFabric) DeleteRemoteIfc(ifc NetworkInterface) error {
+func (f *ovsFabric) DeleteRemoteIfc(ifc RemoteNetIfc) error {
 	return f.deleteRemoteIfcFlows(ifc.VNI, ifc.GuestMAC, ifc.GuestIP)
 }
 
-func (f *ovsFabric) ListLocalIfcs() ([]NetworkInterface, error) {
+func (f *ovsFabric) ListLocalIfcs() ([]LocalNetIfc, error) {
 	// build a map from openflow port nbr to local ifc name
 	ofportToIfcName, err := f.getOfportsToLocalIfcNames()
 	if err != nil {
@@ -200,7 +197,7 @@ func (f *ovsFabric) ListLocalIfcs() ([]NetworkInterface, error) {
 	return completeIfcs, nil
 }
 
-func (f *ovsFabric) ListRemoteIfcs() ([]NetworkInterface, error) {
+func (f *ovsFabric) ListRemoteIfcs() ([]RemoteNetIfc, error) {
 	remoteFlows, err := f.getRemoteFlows()
 	if err != nil {
 		return nil, err
@@ -487,8 +484,8 @@ func (f *ovsFabric) ofportToLocalFlowsPairs(flows []string) map[uint16][]string 
 	return ofportToFlowsPairs
 }
 
-func (f *ovsFabric) parseLocalFlowsPairs(ofportToPair map[uint16][]string) map[uint16]*NetworkInterface {
-	ofportToIfc := make(map[uint16]*NetworkInterface, len(ofportToPair))
+func (f *ovsFabric) parseLocalFlowsPairs(ofportToPair map[uint16][]string) map[uint16]*LocalNetIfc {
+	ofportToIfc := make(map[uint16]*LocalNetIfc, len(ofportToPair))
 	for ofport, aPair := range ofportToPair {
 		ofportToIfc[ofport] = f.parseLocalFlowPair(aPair)
 	}
@@ -513,16 +510,16 @@ func (f *ovsFabric) pairRemoteFlowsPerIfc(flows []string) [][]string {
 	return perIfcFlowPairs
 }
 
-func (f *ovsFabric) parseRemoteFlowsPairs(flowsPairs [][]string) []NetworkInterface {
-	ifcs := make([]NetworkInterface, len(flowsPairs))
+func (f *ovsFabric) parseRemoteFlowsPairs(flowsPairs [][]string) []RemoteNetIfc {
+	ifcs := make([]RemoteNetIfc, len(flowsPairs))
 	for _, aFlowPair := range flowsPairs {
 		ifcs = append(ifcs, f.parseRemoteFlowPair(aFlowPair))
 	}
 	return ifcs
 }
 
-func (f *ovsFabric) nameIfcs(ofportToIfcName map[uint16]string, ofportToIfc map[uint16]*NetworkInterface) ([]NetworkInterface, []string) {
-	completeIfcs := make([]NetworkInterface, len(ofportToIfc))
+func (f *ovsFabric) nameIfcs(ofportToIfcName map[uint16]string, ofportToIfc map[uint16]*LocalNetIfc) ([]LocalNetIfc, []string) {
+	completeIfcs := make([]LocalNetIfc, len(ofportToIfc))
 	orphanIfcs := make([]string, 0)
 	for ofport, name := range ofportToIfcName {
 		ifc := ofportToIfc[ofport]
@@ -662,8 +659,8 @@ func (f *ovsFabric) arpOrDlTrafficFlowOfport(flow string) string {
 	return f.flowParsingKit.decNbr.FindString(f.flowParsingKit.output.FindString(flow))
 }
 
-func (f *ovsFabric) parseLocalFlowPair(flowsPair []string) *NetworkInterface {
-	ifc := &NetworkInterface{}
+func (f *ovsFabric) parseLocalFlowPair(flowsPair []string) *LocalNetIfc {
+	ifc := &LocalNetIfc{}
 
 	// both flows in a pair store the vni, we can take it from the first
 	// flow without checking its kind
@@ -680,8 +677,8 @@ func (f *ovsFabric) parseLocalFlowPair(flowsPair []string) *NetworkInterface {
 	return ifc
 }
 
-func (f *ovsFabric) parseRemoteFlowPair(flowsPair []string) NetworkInterface {
-	ifc := NetworkInterface{}
+func (f *ovsFabric) parseRemoteFlowPair(flowsPair []string) RemoteNetIfc {
+	ifc := RemoteNetIfc{}
 
 	// VNI and host IP of a remote interface are stored in both flows created
 	// for the interface, thus we can take them from the first flow of the pair
