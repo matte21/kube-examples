@@ -11,6 +11,7 @@ The data plane is based on OVS.  Each node has an independent OVS
 installation.  The kube-based control plane distributes the needed
 information to each node.
 
+
 ## Status
 
 This is an early work in progress.  Currently there are initial drafts
@@ -19,6 +20,7 @@ interface to the local network machinery, the controller that assigns
 IP addresses, the controller that invokes the local network machinery,
 an implementation of that interface that just logs invocations, and a
 test driver.
+
 
 ## Architecture
 
@@ -49,6 +51,10 @@ This example adds the following to the Kubernetes cluster.
   relationship with its counterpart on any other node.  This is a code
   library that has a golang interface and is compiled into the connection
   agent.
+
+All components are created in the Kubernetes API namespace
+`example-com`.
+
 
 ## The SDN
 
@@ -115,6 +121,7 @@ The problems that the SDN solves are as follows.
   NetworkAttachment to that VNI --- and should not be communicated to
   other nodes (because that communication would impose unnecessary
   costs).
+
 
 ## The IPAM Controller
 
@@ -244,3 +251,78 @@ regarding NetworkAttachments.
 
 See [cmd/attachment-tput-driver](cmd/attachment-tput-driver) for a
 test driver.
+
+
+## Operations Guide
+
+### Where KOS Can Be Deployed
+
+KOS can be run on any standard Kubernetes cluster, provided you can
+run privileged containers there.  The only part of KOS that actually
+requires privilege is the part that installs and uses OVS.  (Maybe
+Prometheus and Grafana will also require privilege.)
+
+### Introduction to Build and Deploy
+
+This is only a simple example, and has an exceptionally simple
+approach to building and deploying.  It supposes one Unix/Linux
+machine, with connectivity to the Kube cluster's apiservers, for
+building and operations.
+
+There is a `Makefile` in the `kos` directory and it supports the
+following steps.
+
+### Pre-Requisites
+
+You will need the following installed on your build/ops machine.
+
+- Go, release 1.10 or later
+
+- Docker
+
+- Glide
+
+- make
+
+- m4
+
+With `kos` as your current working directory, `glide install` to
+populate the `kos/vendor` directory.
+
+### Build
+
+With `kos` as your current working directory, `make build`.  This
+creates binary executable files, but not container images.
+
+### Publish
+
+With `kos` as your current working directory, `make publish`.  This
+uses the existing executables to create container images and `docker
+push` them.  The image for `$component` is pushed to
+`${DOCKER_PREFIX}/kos-${component}:latest`, and `DOCKER_PREFIX`
+defaults to `$LOGNAME` (i.e., the default is to push to the DockerHub
+namespace that matches your login name) but you can override it in
+your `make` command.  For example,`make publish
+DOCKER_PREFIX=my.reg.com/solomon` would push to the `solomon`
+namespace in the registry at `my.reg.com`.
+
+Invoking `make publish` also specializes some deployment templates
+with the proper container image references.  These are used in the
+next step.
+
+### Deploy
+
+With `kos` as your current working directory and with `kubectl`
+configured to manipulate your target Kubernetes cluster as a
+privileged user (that is, set the KUBECONFIG environment variable or
+your `~/.kube/config` file), `make deploy`.  This will `kubectl apply`
+the various files needed to deploy KOS.  Some of those files were
+produced in the `make publish` step.
+
+### Un-Deploy
+
+With `kos` as your current working directory and with `kubectl`
+configured to manipulate your target Kubernetes cluster as a
+privileged user, `make undeploy`.  This will `kubectl delete`
+everything that was created in the `make deploy` step, reading the
+same files as that step.
