@@ -173,21 +173,26 @@ controller code and this area is still work in progress.
 As with any controller, one of the IP address controller's problems is
 how to avoid doing duplicate work while waiting for its earlier
 actions to fully take effect.  To save on client/server traffic, this
-controller does not actively query the apiservers to find out its
-previous actions; rather, this controller simply waits to be informed
-through its Informers.  In the interim, this conrtroller maintains a
-record of actions in flight.  In particular, for each address
-assignment in flight, the controller records: the ResourceVersion of
-the NetworkAttachment that was seen to need an IP address, the
-ResourceVersion of the Subnet that was referenced when making the
-assignment, the IP address assigned, and the ResourceVersion of the
-NetworkAttachment created by the update that writes the assigned
-address into the status of the attachment object.  As long as the
-Subnet's ResourceVersion is unchanged and the attachment object's
-ResourceVersion is one of the two recorded, the record is valid and
-retained.  However, this does not work well enough, because the
-connection agents also updates the NetworkAttachment objects.  This is
-still work in progress.
+controller does not normally actively query the apiservers to find out
+its previous actions; rather, this controller simply waits to be
+informed through its Informers.  In the interim, this conrtroller
+maintains a record of actions in flight.  In particular, for each
+address assignment in flight, the controller records: the
+ResourceVersion of the NetworkAttachment that was seen to need an IP
+address, the ResourceVersion of the Subnet that was referenced when
+making the assignment, the IP address assigned, and the
+ResourceVersion of the NetworkAttachment created by the update that
+writes the assigned address into the status of the attachment object.
+As long as the Subnet's ResourceVersion is unchanged and the
+attachment object's ResourceVersion is one of the two recorded, the
+record is valid and retained.  However, this does not work well
+enough, because the connection agents also updates the
+NetworkAttachment objects, and the IP address controller can be
+notified of such an update before being notified of the IP lock
+object's creation.  To handle this possibility the IP address
+controller will actively query for the lock object corresponding to
+the IP address in a NetworkAttachment's Status if the controller does
+not have that IP lock object in its informer's local cache.
 
 
 ## The Connection Agent

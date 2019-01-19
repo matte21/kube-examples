@@ -76,7 +76,7 @@ func main() {
 	netattInformer := net1.NetworkAttachments()
 	lockInformer := net1.IPLocks()
 	sif.Start(stopCh)
-	queue := workqueue.NewRateLimitingQueue(workqueue.NewItemExponentialFailureRateLimiter(200*time.Millisecond, 8*time.Hour))
+	queue := workqueue.NewNamedRateLimitingQueue(workqueue.NewItemExponentialFailureRateLimiter(200*time.Millisecond, 8*time.Hour), "kos_ipam_controller_queue")
 	ctlr, err := ipamctlr.NewIPAMController(kcs.NetworkV1alpha1(), subnetInformer.Informer(), subnetInformer.Lister(), netattInformer.Informer(), netattInformer.Lister(), lockInformer.Informer(), lockInformer.Lister(), queue, workers)
 	if err != nil {
 		glog.Errorf("Failed to initialize IPAM controller: %s\n", err.Error())

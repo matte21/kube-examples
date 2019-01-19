@@ -377,12 +377,13 @@ func (ctlr *IPAMController) analyzeAndRelease(ns, name string, att *netv1a1.Netw
 		return
 	}
 	var timeSlippers, undesiredLocks, usableLocks ParsedLockList
-	for _, ownedObj := range ownedObjs {
-		ipl := ownedObj.(*netv1a1.IPLock)
+	considered := make(map[uint32]struct{})
+	consider := func(ipl *netv1a1.IPLock) {
 		parsed, parseErr := NewParsedLock(ipl)
 		if parseErr != nil {
-			continue
+			return
 		}
+		considered[parsed.addrU] = struct{}{}
 		_, ownerUID := GetOwner(ipl, "NetworkAttachment")
 		if att != nil && ownerUID != att.UID {
 			// This is for an older or newer edition of `att`; ignore it.
@@ -390,16 +391,40 @@ func (ctlr *IPAMController) analyzeAndRelease(ns, name string, att *netv1a1.Netw
 			// That may take a while, but that is better than deleting a lock
 			// owned by a more recent edition of `att`.
 			timeSlippers = timeSlippers.Append(parsed)
-			continue
+			return
 		}
 		if parsed.VNI != desiredVNI || parsed.addrU < desiredBaseU || parsed.addrU > desiredLastU {
 			undesiredLocks = undesiredLocks.Append(parsed)
-			continue
+			return
 		}
 		if string(parsed.UID) == statusLockUID && att != nil && att.Status.IPv4 != "" && att.Status.IPv4 == parsed.GetIP().String() {
 			lockInStatus = parsed
 		}
 		usableLocks = usableLocks.Append(parsed)
+	}
+	for _, ownedObj := range ownedObjs {
+		ipl := ownedObj.(*netv1a1.IPLock)
+		consider(ipl)
+	}
+	if att != nil && att.Status.IPv4 != "" {
+		// Make sure we do not skip this one just because we have not
+		// yet been notified about it.
+		statusIP := gonet.ParseIP(att.Status.IPv4)
+		if statusIP != nil {
+			statusIPU := IPv4ToUint32(statusIP)
+			if _, found := considered[statusIPU]; !found {
+				antName := makeIPLockName2(desiredVNI, statusIP)
+				ipl, err := ctlr.netIfc.IPLocks(ns).Get(antName, k8smetav1.GetOptions{})
+				if err != nil {
+					glog.Infof("For NetworkAttachment %s/%s failed to fetch lock %s for IP in Status: %s\n", ns, name, antName, err.Error())
+				} else {
+					on, _ := GetOwner(ipl, "NetworkAttachment")
+					if on == name {
+						consider(ipl)
+					}
+				}
+			}
+		}
 	}
 	if nadat != nil && (att == nil || nadat.anticipatingResourceVersion != att.ResourceVersion && nadat.anticipatedResourceVersion != att.ResourceVersion || nadat.anticipationSubnetRV != subnetRV) {
 		nadat.anticipatingResourceVersion = ""
@@ -715,7 +740,7 @@ func (x ParsedLock) Equal(y ParsedLock) bool {
 
 func (x ParsedLock) IsBetterThan(y ParsedLock) bool {
 	if x.CreationTime != y.CreationTime {
-		return x.CreationTime.After(y.CreationTime)
+		return x.CreationTime.Before(y.CreationTime)
 	}
 	return strings.Compare(string(x.UID), string(y.UID)) > 0
 }
