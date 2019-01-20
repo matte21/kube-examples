@@ -16,7 +16,6 @@ limitations under the License.
 package networkfabric
 
 import (
-	"bytes"
 	"encoding/binary"
 	"fmt"
 	"github.com/golang/glog"
@@ -510,7 +509,7 @@ func (f *ovsFabric) getOfportsToLocalIfcNames() (map[uint16]string, error) {
 	listOfportsAndIfcNames := f.newListOfportsAndIfcNamesCmd()
 
 	out, err := listOfportsAndIfcNames.CombinedOutput()
-	outStr := string(out)
+	outStr := strings.TrimRight(string(out), "\n")
 	if err != nil {
 		return nil, fmt.Errorf("failed to list local ifcs names and ofports: %s: %s",
 			err.Error(),
@@ -661,14 +660,15 @@ func (f *ovsFabric) getFlows() ([]string, error) {
 	getFlows := f.newGetFlowsCmd()
 
 	out, err := getFlows.CombinedOutput()
+	outStr := strings.TrimRight(string(out), "\n")
 	if err != nil {
 		return nil, fmt.Errorf("failed to list flows for bridge %s: %s: %s",
 			f.bridge,
 			err.Error(),
-			string(out))
+			outStr)
 	}
 
-	return parseGetFlowsRawOutput(out), nil
+	return parseGetFlowsOutput(outStr), nil
 }
 
 // the trailing "Func" stands for functional: this function returns a new slice
@@ -713,8 +713,8 @@ func isTunneling(flow string) bool {
 	return strings.Contains(flow, "in_port")
 }
 
-func parseGetFlowsRawOutput(output []byte) []string {
-	flowsLines := bytes.Split(output, []byte("\n"))
+func parseGetFlowsOutput(output string) []string {
+	flowsLines := strings.Split(output, "\n")
 	flows := make([]string, 0, len(flowsLines))
 	for _, aFlow := range flowsLines {
 		flows = append(flows, string(aFlow))
