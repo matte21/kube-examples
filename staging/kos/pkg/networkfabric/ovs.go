@@ -238,6 +238,7 @@ func (f *ovsFabric) initFlowsParsingKit() {
 		tunID:  regexp.MustCompile(tunIDRegexpStr),
 		load:   regexp.MustCompile(loadRegexpStr),
 		cookie: regexp.MustCompile(cookieRegexpStr),
+		ipv4:   regexp.MustCompile(ipv4RegexpStr),
 		arpTPA: regexp.MustCompile(arpTPARegexpStr),
 		mac:    regexp.MustCompile(macRegexpStr),
 	}
