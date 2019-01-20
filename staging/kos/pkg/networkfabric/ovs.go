@@ -896,7 +896,7 @@ func (f *ovsFabric) newDelFlowsCmd(flows ...string) *exec.Cmd {
 func (f *ovsFabric) newGetFlowsCmd() *exec.Cmd {
 	// TODO maybe we can do better: some options might filter out the flows we
 	// do not need
-	return exec.Command("ovs-vsctl", "dump-flows", f.bridge)
+	return exec.Command("ovs-ofctl", "dump-flows", f.bridge)
 }
 
 func (f *ovsFabric) newListOfportsAndIfcNamesCmd() *exec.Cmd {
