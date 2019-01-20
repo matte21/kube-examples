@@ -604,7 +604,7 @@ func (f *ovsFabric) nameIfcs(ofportToIfcName map[uint16]string, ofportToIfc map[
 			ifc.Name = name
 			completeIfcs = append(completeIfcs, *ifc)
 			glog.V(5).Infof("Named local network interface %#+v",
-				name)
+				ifc)
 		}
 	}
 	return completeIfcs, orphanIfcs
@@ -820,6 +820,7 @@ func (f *ovsFabric) newCreateBridgeCmd() *exec.Cmd {
 	// enable most OpenFlow protocols because each one has some commands useful
 	// for manual inspection of the bridge and its flows. We need at least v1.5
 	// because it's the first one to support bundling flows in a single transaction
+	// TODO do something better than just hardcoding all the protocols
 	return exec.Command("ovs-vsctl",
 		"--may-exist",
 		"add-br",
