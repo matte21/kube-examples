@@ -37,6 +37,7 @@ const defaultEtcdPathPrefix = "/registry/network.kubernetes.io"
 
 type NetworkAPIServerOptions struct {
 	RecommendedOptions *genericoptions.RecommendedOptions
+	ServerRunOptions   *genericoptions.ServerRunOptions
 
 	StdOut io.Writer
 	StdErr io.Writer
@@ -45,6 +46,7 @@ type NetworkAPIServerOptions struct {
 func NewNetworkAPIServerOptions(out, errOut io.Writer) *NetworkAPIServerOptions {
 	o := &NetworkAPIServerOptions{
 		RecommendedOptions: genericoptions.NewRecommendedOptions(defaultEtcdPathPrefix, apiserver.Codecs.LegacyCodec(v1alpha1.SchemeGroupVersion)),
+		ServerRunOptions:   genericoptions.NewServerRunOptions(),
 
 		StdOut: out,
 		StdErr: errOut,
@@ -76,12 +78,14 @@ func NewCommandStartNetworkAPIServer(defaults *NetworkAPIServerOptions, stopCh <
 
 	flags := cmd.Flags()
 	o.RecommendedOptions.AddFlags(flags)
+	o.ServerRunOptions.AddUniversalFlags(flags)
 
 	return cmd
 }
 
 func (o NetworkAPIServerOptions) Validate(args []string) error {
 	errors := []error{}
+	errors = append(errors, o.ServerRunOptions.Validate()...)
 	errors = append(errors, o.RecommendedOptions.Validate()...)
 	return utilerrors.NewAggregate(errors)
 }
@@ -97,7 +101,11 @@ func (o *NetworkAPIServerOptions) Complete() error {
 
 func (o *NetworkAPIServerOptions) Config() (*apiserver.Config, error) {
 	serverConfig := genericapiserver.NewRecommendedConfig(apiserver.Codecs)
+	serverConfig.EnableMetrics = true
 	if err := o.RecommendedOptions.ApplyTo(serverConfig, apiserver.Scheme); err != nil {
+		return nil, err
+	}
+	if err := o.ServerRunOptions.ApplyTo(&serverConfig.Config); err != nil {
 		return nil, err
 	}
 

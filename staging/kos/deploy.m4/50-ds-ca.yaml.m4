@@ -11,6 +11,9 @@ spec:
     metadata:
       labels:
         connection-agent: "true"
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "9365"
     spec:
       serviceAccountName: connection-agent
       hostNetwork: true
