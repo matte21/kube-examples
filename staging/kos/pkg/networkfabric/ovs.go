@@ -329,8 +329,8 @@ func (f *ovsFabric) getIfcOfport(ifc string) (uint16, error) {
 }
 
 func (f *ovsFabric) addDefaultFlows() error {
-	defaultResubmitToT1Flow := "table=0,actions=resubmit(,1)"
-	defaultDropFlow := "table=1,actions=drop"
+	defaultResubmitToT1Flow := "table=0,priority=1,actions=resubmit(,1)"
+	defaultDropFlow := "table=1,priority=1,actions=drop"
 
 	addFlows := f.newAddFlowsCmd(defaultResubmitToT1Flow, defaultDropFlow)
 
@@ -853,8 +853,8 @@ func (f *ovsFabric) newAddVTEPCmd() *exec.Cmd {
 		"interface",
 		f.vtep,
 		"type=vxlan",
-		"options:key=flow",
-		"options:remote_ip=flow")
+		"option:key=flow",
+		"option:remote_ip=flow")
 }
 
 func (f *ovsFabric) newGetIfcOfportCmd(ifc string) *exec.Cmd {
