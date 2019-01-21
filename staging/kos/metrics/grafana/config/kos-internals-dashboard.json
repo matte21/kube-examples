@@ -58,15 +58,22 @@
           "expr": "rate(kos_agent_queue_retries[1m])",
           "format": "time_series",
           "intervalFactor": 2,
-          "legendFormat": "{{ instance }}",
+          "legendFormat": "ca @ {{ instance }}",
           "refId": "A"
+        },
+        {
+          "expr": "rate(kos_ipam_controller_queue_retries[1m])",
+          "format": "time_series",
+          "intervalFactor": 1,
+          "legendFormat": "ipam @ {{ instance }}",
+          "refId": "B"
         }
       ],
       "thresholds": [],
       "timeFrom": null,
       "timeRegions": [],
       "timeShift": null,
-      "title": "Connection Agent Requeue Rate",
+      "title": "Requeue Rate",
       "tooltip": {
         "shared": true,
         "sort": 0,
@@ -143,15 +150,22 @@
           "expr": "rate(kos_agent_queue_adds[1m])",
           "format": "time_series",
           "intervalFactor": 2,
-          "legendFormat": "{{ instance }}",
+          "legendFormat": "ca @ {{ instance }}",
           "refId": "A"
+        },
+        {
+          "expr": "rate(kos_ipam_controller_queue_adds[1m])",
+          "format": "time_series",
+          "intervalFactor": 1,
+          "legendFormat": "ipam @ {{ legend }}",
+          "refId": "B"
         }
       ],
       "thresholds": [],
       "timeFrom": null,
       "timeRegions": [],
       "timeShift": null,
-      "title": "Connection Agent Enqueue Rate",
+      "title": "Enqueue Rate",
       "tooltip": {
         "shared": true,
         "sort": 0,
@@ -228,15 +242,22 @@
           "expr": "rate(kos_agent_queue_queue_latency_count[1m])",
           "format": "time_series",
           "intervalFactor": 2,
-          "legendFormat": "{{ instance }}",
+          "legendFormat": "ca @ {{ instance }}",
           "refId": "A"
+        },
+        {
+          "expr": "rate(kos_ipam_controller_queue_queue_latency_count[1m])",
+          "format": "time_series",
+          "intervalFactor": 1,
+          "legendFormat": "ipam @ {{ instance }}",
+          "refId": "B"
         }
       ],
       "thresholds": [],
       "timeFrom": null,
       "timeRegions": [],
       "timeShift": null,
-      "title": "Connection Agent Dequeue Rate",
+      "title": "Dequeue Rate",
       "tooltip": {
         "shared": true,
         "sort": 0,
@@ -313,8 +334,15 @@
           "expr": "kos_agent_queue_depth",
           "format": "time_series",
           "intervalFactor": 2,
-          "legendFormat": "ca:{{ instance }}",
+          "legendFormat": "ca @ {{ instance }}",
           "refId": "A"
+        },
+        {
+          "expr": "kos_ipam_controller_queue_depth",
+          "format": "time_series",
+          "intervalFactor": 1,
+          "legendFormat": "ipam @ {{ instance }}",
+          "refId": "B"
         }
       ],
       "thresholds": [],
@@ -1078,15 +1106,22 @@
           "expr": "rate(kos_ipam_anticipation_used_sum[1m])",
           "format": "time_series",
           "intervalFactor": 2,
-          "legendFormat": "{{ instance }}",
+          "legendFormat": "anticipation @ {{ instance }}",
           "refId": "A"
+        },
+        {
+          "expr": "rate(kos_ipam_status_used_sum[1m])",
+          "format": "time_series",
+          "intervalFactor": 1,
+          "legendFormat": "status @ {{ instance }}",
+          "refId": "B"
         }
       ],
       "thresholds": [],
       "timeFrom": null,
       "timeRegions": [],
       "timeShift": null,
-      "title": "Rate of Benefit from IP Address Anticipation",
+      "title": "Rate of Benefits from Special IPAM Memory",
       "tooltip": {
         "shared": true,
         "sort": 0,
@@ -1302,7 +1337,7 @@
     "list": []
   },
   "time": {
-    "from": "now-1h",
+    "from": "now-30m",
     "to": "now"
   },
   "timepicker": {
@@ -1333,5 +1368,5 @@
   "timezone": "",
   "title": "KOS Internals",
   "uid": "39Dk0_Qik",
-  "version": 5
+  "version": 6
 }
