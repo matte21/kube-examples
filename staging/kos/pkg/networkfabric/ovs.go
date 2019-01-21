@@ -153,15 +153,27 @@ func (f *ovsFabric) DeleteLocalIfc(ifc LocalNetIfc) error {
 		return err
 	}
 
+	glog.V(2).Infof("Deleted local interface %#+v connected to bridge %s",
+		ifc,
+		f.bridge)
+
 	return nil
 }
 
 func (f *ovsFabric) CreateRemoteIfc(ifc RemoteNetIfc) error {
-	return f.addRemoteIfcFlows(ifc.VNI, ifc.GuestMAC, ifc.HostIP, ifc.GuestIP)
+	if err := f.addRemoteIfcFlows(ifc.VNI, ifc.GuestMAC, ifc.HostIP, ifc.GuestIP); err != nil {
+		return err
+	}
+	glog.V(2).Infof("Created remote interface %#+v", ifc)
+	return nil
 }
 
 func (f *ovsFabric) DeleteRemoteIfc(ifc RemoteNetIfc) error {
-	return f.deleteRemoteIfcFlows(ifc.VNI, ifc.GuestMAC, ifc.GuestIP)
+	if err := f.deleteRemoteIfcFlows(ifc.VNI, ifc.GuestMAC, ifc.GuestIP); err != nil {
+		return err
+	}
+	glog.V(2).Infof("Deleted remote interface %#+v", ifc)
+	return nil
 }
 
 func (f *ovsFabric) ListLocalIfcs() ([]LocalNetIfc, error) {
@@ -222,6 +234,8 @@ func (f *ovsFabric) ListRemoteIfcs() ([]RemoteNetIfc, error) {
 		f.bridge)
 	perIfcFlowPairs := f.pairRemoteFlowsPerIfc(remoteFlows)
 
+	glog.V(4).Infof("Parsing flows pairs found in bridge %s into remote Network Interfaces...",
+		f.bridge)
 	return f.parseRemoteFlowsPairs(perIfcFlowPairs), nil
 }
 
@@ -372,14 +386,14 @@ func (f *ovsFabric) deleteIfc(ifc string) error {
 }
 
 func (f *ovsFabric) addLocalIfcFlows(ofport uint16, tunID uint32, dlDst net.HardwareAddr, arpTPA net.IP) error {
-	tunnelingFlow := fmt.Sprintf("table=0,in_port=%d,actions=set_field:%d->tun_id,resubmit(,1)",
+	tunnelingFlow := fmt.Sprintf("table=0,in_port=%d,actions=set_field:%#x->tun_id,resubmit(,1)",
 		ofport,
 		tunID)
-	dlTrafficFlow := fmt.Sprintf("table=1,tun_id=%d,dl_dst=%s,actions=output:%d",
+	dlTrafficFlow := fmt.Sprintf("table=1,tun_id=%#x,dl_dst=%s,actions=output:%d",
 		tunID,
 		dlDst,
 		ofport)
-	arpFlow := fmt.Sprintf("table=1,tun_id=%d,arp,arp_tpa=%s,actions=output:%d",
+	arpFlow := fmt.Sprintf("table=1,tun_id=%#x,arp,arp_tpa=%s,actions=output:%d",
 		tunID,
 		arpTPA,
 		ofport)
@@ -404,8 +418,8 @@ func (f *ovsFabric) addLocalIfcFlows(ofport uint16, tunID uint32, dlDst net.Hard
 
 func (f *ovsFabric) deleteLocalIfcFlows(ofport uint16, tunID uint32, dlDst net.HardwareAddr, arpTPA net.IP) error {
 	tunnelingFlow := fmt.Sprintf("in_port=%d", ofport)
-	dlTrafficFlow := fmt.Sprintf("tun_id=%d,dl_dst=%s", tunID, dlDst)
-	arpFlow := fmt.Sprintf("tun_id=%d,arp,arp_tpa=%s", tunID, arpTPA)
+	dlTrafficFlow := fmt.Sprintf("tun_id=%#x,dl_dst=%s", tunID, dlDst)
+	arpFlow := fmt.Sprintf("tun_id=%#x,arp,arp_tpa=%s", tunID, arpTPA)
 
 	delFlows := f.newDelFlowsCmd(tunnelingFlow, dlTrafficFlow, arpFlow)
 
@@ -436,13 +450,13 @@ func (f *ovsFabric) addRemoteIfcFlows(tunID uint32, dlDst net.HardwareAddr, tunD
 	// but we need this coupling at remote interfaces list time.
 	cookie, _ := binary.Uvarint(dlDst)
 
-	dlTrafficFlow := fmt.Sprintf("table=1,cookie=%d,tun_id=%d,dl_dst=%s,actions=set_field:%s->tun_dst,output:%d",
+	dlTrafficFlow := fmt.Sprintf("table=1,cookie=%d,tun_id=%#x,dl_dst=%s,actions=set_field:%s->tun_dst,output:%d",
 		cookie,
 		tunID,
 		dlDst,
 		tunDst,
 		f.vtepOfport)
-	arpFlow := fmt.Sprintf("table=1,cookie=%d,tun_id=%d,arp,arp_tpa=%s,actions=set_field:%s->tun_dst,output:%d",
+	arpFlow := fmt.Sprintf("table=1,cookie=%d,tun_id=%#x,arp,arp_tpa=%s,actions=set_field:%s->tun_dst,output:%d",
 		cookie,
 		tunID,
 		arpTPA,
@@ -467,10 +481,10 @@ func (f *ovsFabric) addRemoteIfcFlows(tunID uint32, dlDst net.HardwareAddr, tunD
 }
 
 func (f *ovsFabric) deleteRemoteIfcFlows(tunID uint32, dlDst net.HardwareAddr, arpTPA net.IP) error {
-	dlTrafficFlow := fmt.Sprintf("table=1,tun_id=%d,dl_dst=%s",
+	dlTrafficFlow := fmt.Sprintf("table=1,tun_id=%#x,dl_dst=%s",
 		tunID,
 		dlDst)
-	arpFlow := fmt.Sprintf("table=1,tun_id=%d,arp,arp_tpa=%s",
+	arpFlow := fmt.Sprintf("table=1,tun_id=%#x,arp,arp_tpa=%s",
 		tunID,
 		arpTPA)
 
