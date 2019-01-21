@@ -645,7 +645,7 @@ func (f *ovsFabric) parseOfportsAndIfcNames(ofportsAndIfcNamesRaw string) map[ui
 }
 
 func (f *ovsFabric) parseOfportAndIfcName(ofportAndNameJoined string, ofportToIfcName map[uint16]string) {
-	glog.V(5).Infof("Parsing OpenFlow port number and interface pair %s from bridge %s:",
+	glog.V(5).Infof("Parsing OpenFlow port number and interface name pair %s from bridge %s",
 		ofportAndNameJoined,
 		f.bridge)
 
