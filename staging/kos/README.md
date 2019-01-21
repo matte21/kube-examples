@@ -306,6 +306,12 @@ kubectl create -f metrices/grafana/manifests
 The reason that `kubectl apply` is not used for Grafana is that the
 configmap is too big.
 
+This also creates a NodePort Service for the Prometheus server on node
+port 30909, which means you can access the Prometheus server at
+`http://workerNode:30909/` for any reachable `workerNode`.  Similarly,
+this creates a NodePort Service for Grafana on node port 30003, so you
+can reach Grafana at `http://workerNode:30003/`.
+
 The source for the Prometheus config is actually in
 `metrics/prometheus/config/config.yaml`.  If you edit that file then
 invoke `metrics/prometheus/sync-configmap.sh` to update the configmap
@@ -342,14 +348,19 @@ next step.
 With `kos` as your current working directory and with `kubectl`
 configured to manipulate your target Kubernetes cluster as a
 privileged user (that is, set the KUBECONFIG environment variable or
-your `~/.kube/config` file), `make deploy`.  This will `kubectl apply`
-the various files needed to deploy KOS.  Some of those files were
-produced in the `make publish` step.
+your `~/.kube/config` file), `make deploy`.  This will instantiate
+some template macros if necessary and then `kubectl apply` the various
+files needed to deploy KOS.  If any macro-expanded files are missing
+then this step references the `DOCKER_PREFIX` variable with the usual
+default, so set it on your `make` command line if you are using a
+different value.
 
 ### Un-Deploy
 
 With `kos` as your current working directory and with `kubectl`
 configured to manipulate your target Kubernetes cluster as a
-privileged user, `make undeploy`.  This will `kubectl delete`
-everything that was created in the `make deploy` step, reading the
-same files as that step.
+privileged user, `make undeploy`.  This will instantiate some template
+macros if necessary and then `kubectl delete` everything that was
+created in the `make deploy` step.  You need the `DOCKER_PREFIX`
+variable set correctly as for `make deploy` and `make publish`, unless
+the needed files already exist.

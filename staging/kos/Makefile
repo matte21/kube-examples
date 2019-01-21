@@ -27,22 +27,28 @@ build-attachment-tput-driver:
 	go build -a -o local-binaries/attachment-tput-driver k8s.io/examples/staging/kos/cmd/attachment-tput-driver
 
 publish-network-apiserver:
-	m4 -DDOCKER_PREFIX=${DOCKER_PREFIX} deploy.m4/50-rs-xs.yaml.m4 > deploy/50-rs-xs.yaml
 	cd images/network-apiserver && docker build -t ${DOCKER_PREFIX}/kos-network-apiserver:latest . && docker push ${DOCKER_PREFIX}/kos-network-apiserver:latest
 
 publish-ipam-controller:
-	m4 -DDOCKER_PREFIX=${DOCKER_PREFIX} deploy.m4/50-rs-ipam.yaml.m4 > deploy/50-rs-ipam.yaml
 	cd images/controllers/ipam && docker build -t ${DOCKER_PREFIX}/kos-ipam-controller:latest . && docker push ${DOCKER_PREFIX}/kos-ipam-controller:latest
 
 publish-connection-agent:
-	m4 -DDOCKER_PREFIX=${DOCKER_PREFIX} deploy.m4/50-ds-ca.yaml.m4 > deploy/50-ds-ca.yaml
 	cp -R cmd/attachment-tput-driver/test-scripts images/controllers/connectionagent
 	cd images/controllers/connectionagent && docker build -t ${DOCKER_PREFIX}/kos-connection-agent:latest . && docker push ${DOCKER_PREFIX}/kos-connection-agent:latest
 
+deploy/50-rs-xs.yaml: deploy.m4/50-rs-xs.yaml.m4
+	m4 -DDOCKER_PREFIX=${DOCKER_PREFIX} deploy.m4/50-rs-xs.yaml.m4 > deploy/50-rs-xs.yaml
+
+deploy/50-rs-ipam.yaml: deploy.m4/50-rs-ipam.yaml.m4
+	m4 -DDOCKER_PREFIX=${DOCKER_PREFIX} deploy.m4/50-rs-ipam.yaml.m4 > deploy/50-rs-ipam.yaml
+
+deploy/50-ds-ca.yaml: deploy.m4/50-ds-ca.yaml.m4
+	m4 -DDOCKER_PREFIX=${DOCKER_PREFIX} deploy.m4/50-ds-ca.yaml.m4 > deploy/50-ds-ca.yaml
+
 .PHONY: deploy
-deploy:
+deploy: deploy/50-rs-xs.yaml deploy/50-rs-ipam.yaml deploy/50-ds-ca.yaml
 	kubectl apply -f deploy
 
 .PHONY: undeploy
-undeploy:
+undeploy: deploy/50-rs-xs.yaml deploy/50-rs-ipam.yaml deploy/50-ds-ca.yaml
 	kubectl delete -f deploy
