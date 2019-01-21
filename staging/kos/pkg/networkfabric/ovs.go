@@ -41,7 +41,7 @@ const (
 	tunIDRegexpStr  = "tun_id=" + hexNbrRegexpStr
 	loadRegexpStr   = "load:" + hexNbrRegexpStr
 	cookieRegexpStr = "cookie=" + hexNbrRegexpStr
-	ipv4RegexpStr   = "(([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])\\.){3}([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])"
+	ipv4RegexpStr   = "(?:(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\\.){3}(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)"
 	arpTPARegexpStr = "arp_tpa=" + ipv4RegexpStr
 	macRegexpStr    = "([0-9A-Fa-f]{2}[:-]){5}([0-9A-Fa-f]{2})"
 
@@ -596,7 +596,7 @@ func (f *ovsFabric) parseRemoteFlowsPairs(flowsPairs [][]string) []RemoteNetIfc 
 
 func (f *ovsFabric) nameIfcs(ofportToIfcName map[uint16]string, ofportToIfc map[uint16]*LocalNetIfc) ([]LocalNetIfc, []string) {
 	// we assume that most of the interfaces can be completed (both the network
-	// device and the OpenFlow flows could be created), that's why completeIfcs
+	// device and the OpenFlow flows were found), that's why completeIfcs
 	// has capacity len(ofportToIfc) whereas incompleteIfcs has capacity 0
 	completeIfcs := make([]LocalNetIfc, 0, len(ofportToIfc))
 	incompleteIfcs := make([]string, 0)
@@ -615,6 +615,7 @@ func (f *ovsFabric) nameIfcs(ofportToIfcName map[uint16]string, ofportToIfc map[
 				ifc)
 		}
 	}
+
 	return completeIfcs, incompleteIfcs
 }
 
