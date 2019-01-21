@@ -33,6 +33,7 @@ import (
 	kosclientset "k8s.io/examples/staging/kos/pkg/client/clientset/versioned"
 	kosinformers "k8s.io/examples/staging/kos/pkg/client/informers/externalversions"
 	ipamctlr "k8s.io/examples/staging/kos/pkg/controllers/ipam"
+	_ "k8s.io/examples/staging/kos/pkg/controllers/workqueue_prometheus"
 )
 
 func main() {

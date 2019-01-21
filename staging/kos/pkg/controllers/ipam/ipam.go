@@ -19,12 +19,15 @@ package ipam
 import (
 	"fmt"
 	gonet "net"
+	"net/http"
 	"strconv"
 	"strings"
 	"sync"
 	"time"
 
 	"github.com/golang/glog"
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	k8smetav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -45,6 +48,17 @@ import (
 const (
 	owningAttachmentIdxName = "owningAttachment"
 	attachmentSubnetIdxName = "subnet"
+
+	// The HTTP port under which the scraping endpoint ("/metrics") is served.
+	// See https://github.com/prometheus/prometheus/wiki/Default-port-allocations .
+	MetricsAddr = ":9295"
+
+	// The HTTP path under which the scraping endpoint ("/metrics") is served.
+	MetricsPath = "/metrics"
+
+	// The namespace and subsystem of the Prometheus metrics produced here
+	MetricsNamespace = "kos"
+	MetricsSubsystem = "ipam"
 )
 
 type IPAMController struct {
@@ -61,6 +75,24 @@ type IPAMController struct {
 	atts           map[k8stypes.NamespacedName]*NetworkAttachmentData
 	addrCacheMutex sync.Mutex
 	addrCache      map[uint32]uint32set.UInt32SetChooser
+
+	// IPLock.CreationTimestamp - NetworkAttachment.CreationTimestamp
+	attachmentCreateToLockHistogram prometheus.Histogram
+
+	// round trip time to create an IPLock object
+	lockOpHistograms *prometheus.HistogramVec
+
+	// Attachment ObjectMeta.CreationTimestamp to return from status update
+	attachmentCreateToAddressHistogram prometheus.Histogram
+
+	// round trip time to update attachment status
+	attachmentUpdateHistogram prometheus.Histogram
+
+	// Was the anticipation used (0 or 1)?
+	anticipationUsedHistogram prometheus.Histogram
+
+	// Was the IP address in the Status not in the cache (0 or 1)?
+	statusUsedHistogram prometheus.Histogram
 }
 
 // NetworkAttachmentData holds the local state for a
@@ -93,18 +125,81 @@ func NewIPAMController(netIfc kosclientv1a1.NetworkV1alpha1Interface,
 	queue k8sworkqueue.RateLimitingInterface,
 	workers int) (ctlr *IPAMController, err error) {
 
+	attachmentCreateToLockHistogram := prometheus.NewHistogram(
+		prometheus.HistogramOpts{
+			Namespace: MetricsNamespace,
+			Subsystem: MetricsSubsystem,
+			Name:      "attachment_create_to_lock_latency_seconds",
+			Help:      "Latency from Attachment CreationTimestamp to IPLock CreationTimestamp, in seconds",
+			Buckets:   []float64{-1, 0, 1, 2, 3, 4, 6, 8, 12, 16, 24, 32, 64},
+		})
+
+	lockOpHistograms := prometheus.NewHistogramVec(
+		prometheus.HistogramOpts{
+			Namespace: MetricsNamespace,
+			Subsystem: MetricsSubsystem,
+			Name:      "ip_lock_latency_seconds",
+			Help:      "Round trip latency to create/delete IPLock object, in seconds",
+			Buckets:   []float64{-0.125, 0, 0.125, 0.25, 0.5, 1, 2, 4, 8, 16, 32, 64},
+		},
+		[]string{"op", "err"})
+
+	attachmentCreateToAddressHistogram := prometheus.NewHistogram(
+		prometheus.HistogramOpts{
+			Namespace: MetricsNamespace,
+			Subsystem: MetricsSubsystem,
+			Name:      "attachment_create_to_address_latency_seconds",
+			Help:      "Latency from attachment CreationTimestamp to return from status update, in seconds",
+			Buckets:   []float64{-1, 0, 1, 2, 3, 4, 6, 8, 12, 16, 24, 32, 64},
+		})
+
+	attachmentUpdateHistogram := prometheus.NewHistogram(
+		prometheus.HistogramOpts{
+			Namespace: MetricsNamespace,
+			Subsystem: MetricsSubsystem,
+			Name:      "attachment_update_latency_seconds",
+			Help:      "Round trip latency to set attachment address, in seconds",
+			Buckets:   []float64{-0.125, 0, 0.125, 0.25, 0.5, 1, 2, 4, 8, 16, 32, 64},
+		})
+
+	anticipationUsedHistogram := prometheus.NewHistogram(
+		prometheus.HistogramOpts{
+			Namespace: MetricsNamespace,
+			Subsystem: MetricsSubsystem,
+			Name:      "anticipation_used",
+			Help:      "Was the IP anticipation used?",
+			Buckets:   []float64{0, 1},
+		})
+
+	statusUsedHistogram := prometheus.NewHistogram(
+		prometheus.HistogramOpts{
+			Namespace: MetricsNamespace,
+			Subsystem: MetricsSubsystem,
+			Name:      "status_used",
+			Help:      "Was the IP address in Status used?",
+			Buckets:   []float64{0, 1},
+		})
+
+	prometheus.MustRegister(attachmentCreateToLockHistogram, lockOpHistograms, attachmentCreateToAddressHistogram, attachmentUpdateHistogram, anticipationUsedHistogram, statusUsedHistogram)
+
 	ctlr = &IPAMController{
-		netIfc:         netIfc,
-		subnetInformer: subnetInformer,
-		subnetLister:   subnetLister,
-		netattInformer: netattInformer,
-		netattLister:   netattLister,
-		lockInformer:   lockInformer,
-		lockLister:     lockLister,
-		queue:          queue,
-		workers:        workers,
-		atts:           make(map[k8stypes.NamespacedName]*NetworkAttachmentData),
-		addrCache:      make(map[uint32]uint32set.UInt32SetChooser),
+		netIfc:                             netIfc,
+		subnetInformer:                     subnetInformer,
+		subnetLister:                       subnetLister,
+		netattInformer:                     netattInformer,
+		netattLister:                       netattLister,
+		lockInformer:                       lockInformer,
+		lockLister:                         lockLister,
+		queue:                              queue,
+		workers:                            workers,
+		atts:                               make(map[k8stypes.NamespacedName]*NetworkAttachmentData),
+		addrCache:                          make(map[uint32]uint32set.UInt32SetChooser),
+		attachmentCreateToLockHistogram:    attachmentCreateToLockHistogram,
+		lockOpHistograms:                   lockOpHistograms,
+		attachmentCreateToAddressHistogram: attachmentCreateToAddressHistogram,
+		attachmentUpdateHistogram:          attachmentUpdateHistogram,
+		anticipationUsedHistogram:          anticipationUsedHistogram,
+		statusUsedHistogram:                statusUsedHistogram,
 	}
 	return
 }
@@ -112,6 +207,13 @@ func NewIPAMController(netIfc kosclientv1a1.NetworkV1alpha1Interface,
 func (ctlr *IPAMController) Run(stopCh <-chan struct{}) error {
 	defer k8sutilruntime.HandleCrash()
 	defer ctlr.queue.ShutDown()
+
+	// Serve Prometheus metrics
+	http.Handle("/metrics", promhttp.Handler())
+	go func() {
+		glog.Errorf("In-process HTTP server crashed: %s\n", http.ListenAndServe(MetricsAddr, nil).Error())
+	}()
+
 	ctlr.netattInformer.AddIndexers(map[string]k8scache.IndexFunc{attachmentSubnetIdxName: AttachmentSubnets})
 	ctlr.lockInformer.AddIndexers(map[string]k8scache.IndexFunc{owningAttachmentIdxName: OwningAttachments})
 	ctlr.subnetInformer.AddEventHandler(k8scache.ResourceEventHandlerFuncs{
@@ -313,12 +415,18 @@ func (ctlr *IPAMController) processNetworkAttachment(ns, name string) error {
 		return nil
 	}
 	var ipForStatus gonet.IP
+	anticipationUsed := float64(0)
+	defer func() {
+		ctlr.anticipationUsedHistogram.Observe(anticipationUsed)
+	}()
 	if lockForStatus.Obj != nil {
 		ipForStatus = lockForStatus.GetIP()
 		if ipForStatus.Equal(nadat.anticipatedIPv4) {
+			anticipationUsed = 1
 			return nil
 		}
 	} else if nadat.anticipatedIPv4 != nil {
+		anticipationUsed = 1
 		return nil
 	} else {
 		lockForStatus, ipForStatus, err = ctlr.pickAndLockAddress(ns, name, att, subnetName, desiredVNI, desiredBaseU, desiredPrefixLen)
@@ -412,6 +520,8 @@ func (ctlr *IPAMController) analyzeAndRelease(ns, name string, att *netv1a1.Netw
 		statusIP := gonet.ParseIP(att.Status.IPv4)
 		if statusIP != nil {
 			statusIPU := IPv4ToUint32(statusIP)
+			statusUsed := float64(0)
+			defer func() { ctlr.statusUsedHistogram.Observe(statusUsed) }()
 			if _, found := considered[statusIPU]; !found {
 				antName := makeIPLockName2(desiredVNI, statusIP)
 				ipl, err := ctlr.netIfc.IPLocks(ns).Get(antName, k8smetav1.GetOptions{})
@@ -420,6 +530,7 @@ func (ctlr *IPAMController) analyzeAndRelease(ns, name string, att *netv1a1.Netw
 				} else {
 					on, _ := GetOwner(ipl, "NetworkAttachment")
 					if on == name {
+						statusUsed = 1
 						consider(ipl)
 					}
 				}
@@ -473,7 +584,10 @@ func (ctlr *IPAMController) deleteIPLockObject(parsed ParsedLock) error {
 	delOpts := k8smetav1.DeleteOptions{
 		Preconditions: &k8smetav1.Preconditions{UID: &parsed.UID},
 	}
+	tBefore := time.Now()
 	err := lockOps.Delete(parsed.name, &delOpts)
+	tAfter := time.Now()
+	ctlr.lockOpHistograms.With(prometheus.Labels{"op": "delete", "err": strconv.FormatBool(err != nil)}).Observe(tAfter.Sub(tBefore).Seconds())
 	if err == nil {
 		glog.V(4).Infof("Deleted IPLock %s/%s=%s\n", parsed.ns, parsed.name, string(parsed.UID))
 	} else if k8serrors.IsNotFound(err) || k8serrors.IsGone(err) {
@@ -520,9 +634,13 @@ func (ctlr *IPAMController) pickAndLockAddress(ns, name string, att *netv1a1.Net
 	lockOps := ctlr.netIfc.IPLocks(ns)
 	var ipl2 *netv1a1.IPLock
 	for {
+		tBefore := time.Now()
 		ipl2, err = lockOps.Create(ipl)
+		tAfter := time.Now()
+		ctlr.lockOpHistograms.With(prometheus.Labels{"op": "create", "err": strconv.FormatBool(err != nil)}).Observe(tAfter.Sub(tBefore).Seconds())
 		if err == nil {
 			glog.V(4).Infof("Locked IP address %s for %s/%s=%s, lockName=%s, lockUID=%s\n", ipForStatus, ns, name, string(att.UID), lockName, string(ipl2.UID))
+			ctlr.attachmentCreateToLockHistogram.Observe(ipl2.CreationTimestamp.Sub(att.CreationTimestamp.Time).Seconds())
 			break
 		} else if k8serrors.IsAlreadyExists(err) {
 			// Maybe it is ours
@@ -576,8 +694,15 @@ func (ctlr *IPAMController) setIPInStatus(ns, name string, att *netv1a1.NetworkA
 	att2.Status.AddressVNI = lockForStatus.VNI
 	att2.Status.IPv4 = ipForStatus.String()
 	attachmentOps := ctlr.netIfc.NetworkAttachments(ns)
+	tBefore := time.Now()
 	att3, err := attachmentOps.Update(att2)
+	tAfter := time.Now()
+	ctlr.attachmentUpdateHistogram.Observe(tAfter.Sub(tBefore).Seconds())
 	if err == nil {
+		t1 := att.CreationTimestamp.Time
+		t2 := tAfter.Truncate(time.Second)
+		deltaS := t2.Sub(t1).Seconds()
+		ctlr.attachmentCreateToAddressHistogram.Observe(deltaS)
 		glog.V(4).Infof("Recorded locked address %s in status of %s/%s, old ResourceVersion=%s, new ResourceVersion=%s, subnetRV=%s\n", ipForStatus, ns, name, att.ResourceVersion, att3.ResourceVersion, subnetRV)
 		nadat.anticipatingResourceVersion = att.ResourceVersion
 		nadat.anticipatedResourceVersion = att3.ResourceVersion
