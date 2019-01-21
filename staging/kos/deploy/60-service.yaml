@@ -3,6 +3,9 @@ kind: Service
 metadata:
   name: network-api
   namespace: example-com
+  annotations:
+    prometheus.io/scrape: "true"
+    prometheus.io/scheme: https
 spec:
   ports:
   - port: 443

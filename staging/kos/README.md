@@ -11,6 +11,10 @@ The data plane is based on OVS.  Each node has an independent OVS
 installation.  The kube-based control plane distributes the needed
 information to each node.
 
+This SDN produces Prometheus metrics.  This example includes manifests
+for deploying Prometheus and Grafana in a way that will scrape and
+display metrics from the cluster, including the SDN.
+
 
 ## Status
 
@@ -269,8 +273,8 @@ approach to building and deploying.  It supposes one Unix/Linux
 machine, with connectivity to the Kube cluster's apiservers, for
 building and operations.
 
-There is a `Makefile` in the `kos` directory and it supports the
-following steps.
+There is a `Makefile` in the `kos` directory and it supports some of
+the following steps.
 
 ### Pre-Requisites
 
@@ -288,6 +292,29 @@ You will need the following installed on your build/ops machine.
 
 With `kos` as your current working directory, `glide install` to
 populate the `kos/vendor` directory.
+
+### Prometheus and Grafana
+
+Ome way to deploy them is to issue the following commands, with `kos`
+as your current working directory.
+
+```
+kubectl apply -f metrics/prometheus/manifests
+kubectl create -f metrices/grafana/manifests
+```
+
+The reason that `kubectl apply` is not used for Grafana is that the
+configmap is too big.
+
+The source for the Prometheus config is actually in
+`metrics/prometheus/config/config.yaml`.  If you edit that file then
+invoke `metrics/prometheus/sync-configmap.sh` to update the configmap
+template.
+
+The sources for the Grafana dashboards are in
+`metrics/grafana/config`.  If you edit them (by hand or in Grafana)
+then invoke `metrics/grafana/sync-configmap.sh` to copy them into the
+configmap template.
 
 ### Build
 

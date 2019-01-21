@@ -1,0 +1,57 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: grafana-dashboards-importer
+spec:
+  template:
+    metadata:
+      labels:
+        app: grafana-dashboards-importer
+    spec:
+      serviceAccountName: grafana-dashboards-importer
+      initContainers:
+      - name: wait-for-endpoints
+        image: giantswarm/tiny-tools
+        command: ["fish", "-c", "echo \"waiting for endpoints...\"; while true; set endpoints (curl -s --cacert /var/run/secrets/kubernetes.io/serviceaccount/ca.crt --header \"Authorization: Bearer \"(cat /var/run/secrets/kubernetes.io/serviceaccount/token) https://kubernetes.default.svc/api/v1/namespaces/default/endpoints/grafana); echo $endpoints | jq \".\"; if test (echo $endpoints | jq -r \".subsets[]?.addresses // [] | length\") -gt 0; exit 0; end; echo \"waiting...\";sleep 1; end"]
+      containers:
+      - name: grafana-dashboards-importer
+        image: giantswarm/tiny-tools
+        command: ["/bin/sh", "-c"]
+        workingDir: /opt/grafana-dashboards-importer
+        args:
+          - >
+            for file in *-datasource.json ; do
+              if [ -e "$file" ] ; then
+                echo "importing $file" &&
+                curl --silent --fail --show-error \
+                  --request POST http://admin:admin@grafana:3000/api/datasources \
+                  --header "Content-Type: application/json" \
+                  --data-binary "@$file" ;
+                echo "" ;
+              fi
+            done ;
+            for file in *-dashboard.json ; do
+              if [ -e "$file" ] ; then
+                echo "importing $file" &&
+                ( echo '{"dashboard":'; \
+                  cat "$file"; \
+                  echo ',"overwrite":true,"inputs":[{"name":"DS_PROMETHEUS","type":"datasource","pluginId":"prometheus","value":"prometheus"}]}' ) \
+                | jq -c '.' \
+                | curl --silent --fail --show-error \
+                  --request POST http://admin:admin@grafana:3000/api/dashboards/import \
+                  --header "Content-Type: application/json" \
+                  --data-binary "@-" ;
+                if [ $? -ne 0 ]; then
+                  exit 1
+                fi
+                echo "" ;
+              fi
+            done
+        volumeMounts:
+        - name: config-volume
+          mountPath: /opt/grafana-dashboards-importer
+      restartPolicy: OnFailure
+      volumes:
+      - name: config-volume
+        configMap:
+          name: grafana-dashboards-importer
