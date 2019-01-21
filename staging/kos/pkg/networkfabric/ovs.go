@@ -233,7 +233,6 @@ func (f *ovsFabric) ListRemoteIfcs() ([]RemoteNetIfc, error) {
 	glog.V(4).Infof("Pairing ARP and normal Datalink traffic flows of remote interfaces in bridge %s...",
 		f.bridge)
 	perIfcFlowPairs := f.pairRemoteFlowsPerIfc(remoteFlows)
-
 	glog.V(4).Infof("Parsing flows pairs found in bridge %s into remote Network Interfaces...",
 		f.bridge)
 	return f.parseRemoteFlowsPairs(perIfcFlowPairs), nil
@@ -568,17 +567,17 @@ func (f *ovsFabric) pairRemoteFlowsPerIfc(flows []string) [][]string {
 	flowPairs := make(map[string][]string, len(flows)/2)
 	for _, aFlow := range flows {
 		// two flows belong to the same pair if they have the same cookie
-		flowPair := flowPairs[f.extractCookie(aFlow)]
-		flowPair = append(flowPair, aFlow)
-		if len(flowPair) == 2 {
-			glog.V(5).Infof("Paired flows \"%s\" \"%s\"", flowPair[0], flowPair[1])
+		cookie := f.extractCookie(aFlow)
+		flowPairs[cookie] = append(flowPairs[cookie], aFlow)
+		if len(flowPairs[cookie]) == 2 {
+			glog.V(5).Infof("Paired flows \"%s\" \"%s\"", flowPairs[cookie][0], flowPairs[cookie][1])
 		}
 	}
 
 	// we don't need a map where the key is the cookie. We only need flow pairs,
 	// hence we store them in a slice of slices (each pair is stored in an
 	// innermost slice)
-	perIfcFlowPairs := make([][]string, len(flowPairs))
+	perIfcFlowPairs := make([][]string, 0, len(flowPairs))
 	for _, aFlowPair := range flowPairs {
 		perIfcFlowPairs = append(perIfcFlowPairs, aFlowPair)
 	}
@@ -586,9 +585,9 @@ func (f *ovsFabric) pairRemoteFlowsPerIfc(flows []string) [][]string {
 }
 
 func (f *ovsFabric) parseRemoteFlowsPairs(flowsPairs [][]string) []RemoteNetIfc {
-	ifcs := make([]RemoteNetIfc, len(flowsPairs))
+	ifcs := make([]RemoteNetIfc, 0, len(flowsPairs))
 	for _, aPair := range flowsPairs {
-		glog.V(6).Infof("Parsing flows pair \"%s\" \"%s\"...", aPair[0], aPair[1])
+		glog.V(5).Infof("Parsing flows pair \"%s\" \"%s\"...", aPair[0], aPair[1])
 		ifcs = append(ifcs, f.parseRemoteFlowPair(aPair))
 	}
 	return ifcs
