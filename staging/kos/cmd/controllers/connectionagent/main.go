@@ -42,7 +42,7 @@ const (
 	defaultClientQPS   = 100
 	defaultClientBurst = 200
 
-	queueName = "kos_connection_agent_queue"
+	queueName = "kos_agent_queue"
 )
 
 func main() {

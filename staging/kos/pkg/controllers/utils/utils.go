@@ -17,6 +17,8 @@ limitations under the License.
 package utils
 
 import (
+	"github.com/golang/glog"
+
 	k8sruntime "k8s.io/apimachinery/pkg/runtime"
 	k8stypes "k8s.io/apimachinery/pkg/types"
 	k8scache "k8s.io/client-go/tools/cache"
@@ -35,9 +37,12 @@ func Peel(obj interface{}) k8sruntime.Object {
 	switch o := obj.(type) {
 	case *k8scache.DeletedFinalStateUnknown:
 		return o.Obj.(k8sruntime.Object)
+	case k8scache.DeletedFinalStateUnknown:
+		return o.Obj.(k8sruntime.Object)
 	case k8sruntime.Object:
 		return o
 	default:
+		glog.Errorf("Peel: object of unexpected type %T: %#+v\n", obj, obj)
 		panic(obj)
 	}
 }

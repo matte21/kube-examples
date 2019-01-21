@@ -12,6 +12,9 @@ spec:
     metadata:
       labels:
         ipam-controller: "true"
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "9295"
     spec:
       serviceAccountName: ipam-controller
       containers:

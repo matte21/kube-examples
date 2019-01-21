@@ -21,6 +21,7 @@ import (
 	"fmt"
 	gonet "net"
 	"net/http"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -77,7 +78,7 @@ const (
 	// The HTTP port under which the scraping endpoint ("/metrics") is served.
 	// Pick an unusual one because the host's network namespace is used.
 	// See https://github.com/prometheus/prometheus/wiki/Default-port-allocations .
-	MetricsAddr = ":9365"
+	MetricsAddr = ":9294"
 
 	// The HTTP path under which the scraping endpoint ("/metrics") is served.
 	MetricsPath = "/metrics"
@@ -187,6 +188,24 @@ type ConnectionAgent struct {
 	// slice to exec post-create or -delete.
 	allowedPrograms map[string]struct{}
 
+	// NetworkAttachment.CreationTimestamp to local network interface creation latency
+	attachmentCreateToLocalIfcHistogram prometheus.Histogram
+
+	// NetworkAttachment.CreationTimestamp to remote network interface creation latency
+	attachmentCreateToRemoteIfcHistogram prometheus.Histogram
+
+	// Durations of calls on network fabric
+	fabricLatencyHistograms *prometheus.HistogramVec
+
+	// NetworkAttachment.CreationTimestamp to return from status update
+	attachmentCreateToStatusHistogram prometheus.Histogram
+
+	// round trip time for happy status update
+	attachmentStatusHistograms *prometheus.HistogramVec
+
+	localAttachmentsGauge  prometheus.Gauge
+	remoteAttachmentsGauge prometheus.Gauge
+
 	attachmentExecDurationHistograms *prometheus.HistogramVec
 	attachmentExecStatusCounts       *prometheus.CounterVec
 }
@@ -215,6 +234,69 @@ func NewConnectionAgent(localNodeName string,
 	netFabric netfabric.Interface,
 	allowedPrograms map[string]struct{}) *ConnectionAgent {
 
+	attachmentCreateToLocalIfcHistogram := prometheus.NewHistogram(
+		prometheus.HistogramOpts{
+			Namespace:   MetricsNamespace,
+			Subsystem:   MetricsSubsystem,
+			Name:        "attachment_create_to_local_ifc_latency_seconds",
+			Help:        "Seconds from attachment CreationTimestamp to finished creating local interface",
+			Buckets:     []float64{-0.125, 0, 0.125, 0.25, 0.5, 1, 2, 4, 8, 16, 32, 64, 128, 256},
+			ConstLabels: map[string]string{"node": localNodeName},
+		})
+	attachmentCreateToRemoteIfcHistogram := prometheus.NewHistogram(
+		prometheus.HistogramOpts{
+			Namespace:   MetricsNamespace,
+			Subsystem:   MetricsSubsystem,
+			Name:        "attachment_create_to_remote_ifc_latency_seconds",
+			Help:        "Seconds from attachment CreationTimestamp to finished creating remote interface",
+			Buckets:     []float64{-0.125, 0, 0.125, 0.25, 0.5, 1, 2, 4, 8, 16, 32, 64, 128, 256},
+			ConstLabels: map[string]string{"node": localNodeName},
+		})
+	fabricLatencyHistograms := prometheus.NewHistogramVec(
+		prometheus.HistogramOpts{
+			Namespace:   MetricsNamespace,
+			Subsystem:   MetricsSubsystem,
+			Name:        "fabric_latency_seconds",
+			Help:        "Network fabric operation time in seconds",
+			Buckets:     []float64{-0.125, 0, 0.125, 0.25, 0.5, 1, 2, 4, 8, 16},
+			ConstLabels: map[string]string{"node": localNodeName},
+		},
+		[]string{"op", "err"})
+	attachmentCreateToStatusHistogram := prometheus.NewHistogram(
+		prometheus.HistogramOpts{
+			Namespace:   MetricsNamespace,
+			Subsystem:   MetricsSubsystem,
+			Name:        "attachment_create_to_status_latency_seconds",
+			Help:        "Seconds from attachment CreationTimestamp to return from successful status update",
+			Buckets:     []float64{-0.125, 0, 0.125, 0.25, 0.5, 1, 2, 4, 8, 16, 32, 64, 128, 256},
+			ConstLabels: map[string]string{"node": localNodeName},
+		})
+	attachmentStatusHistograms := prometheus.NewHistogramVec(
+		prometheus.HistogramOpts{
+			Namespace:   MetricsNamespace,
+			Subsystem:   MetricsSubsystem,
+			Name:        "attachment_status_latency_seconds",
+			Help:        "Round trip latency to update attachment status, in seconds",
+			Buckets:     []float64{-0.125, 0, 0.125, 0.25, 0.5, 1, 2, 4, 8, 16, 32, 64, 128, 256},
+			ConstLabels: map[string]string{"node": localNodeName},
+		},
+		[]string{"err"})
+	localAttachmentsGauge := prometheus.NewGauge(
+		prometheus.GaugeOpts{
+			Namespace:   MetricsNamespace,
+			Subsystem:   MetricsSubsystem,
+			Name:        "local_attachments",
+			Help:        "Number of local attachments in network fabric",
+			ConstLabels: map[string]string{"node": localNodeName},
+		})
+	remoteAttachmentsGauge := prometheus.NewGauge(
+		prometheus.GaugeOpts{
+			Namespace:   MetricsNamespace,
+			Subsystem:   MetricsSubsystem,
+			Name:        "remote_attachments",
+			Help:        "Number of remote attachments in network fabric",
+			ConstLabels: map[string]string{"node": localNodeName},
+		})
 	attachmentExecDurationHistograms := prometheus.NewHistogramVec(
 		prometheus.HistogramOpts{
 			Namespace:   MetricsNamespace,
@@ -234,25 +316,32 @@ func NewConnectionAgent(localNodeName string,
 			ConstLabels: map[string]string{"node": localNodeName},
 		},
 		[]string{"what", "exitStatus"})
-	prometheus.MustRegister(attachmentExecDurationHistograms, attachmentExecStatusCounts)
+	prometheus.MustRegister(attachmentCreateToLocalIfcHistogram, attachmentCreateToRemoteIfcHistogram, fabricLatencyHistograms, attachmentCreateToStatusHistogram, attachmentStatusHistograms, localAttachmentsGauge, remoteAttachmentsGauge, attachmentExecDurationHistograms, attachmentExecStatusCounts)
 
 	return &ConnectionAgent{
-		localNodeName:                    localNodeName,
-		hostIP:                           hostIP,
-		kcs:                              kcs,
-		netv1a1Ifc:                       kcs.NetworkV1alpha1(),
-		queue:                            queue,
-		workers:                          workers,
-		netFabric:                        netFabric,
-		vniToVnState:                     make(map[uint32]*vnState),
-		nsnToVNStateVNI:                  make(map[k8stypes.NamespacedName]uint32),
-		nsnToLocalMainState:              make(map[k8stypes.NamespacedName]LocalAttachmentMainState),
-		nsnToPostCreateExecReport:        make(map[k8stypes.NamespacedName]*netv1a1.ExecReport),
-		nsnToRemoteIfc:                   make(map[k8stypes.NamespacedName]netfabric.RemoteNetIfc),
-		nsnToVNIs:                        make(map[k8stypes.NamespacedName]map[uint32]struct{}),
-		allowedPrograms:                  allowedPrograms,
-		attachmentExecDurationHistograms: attachmentExecDurationHistograms,
-		attachmentExecStatusCounts:       attachmentExecStatusCounts,
+		localNodeName:                        localNodeName,
+		hostIP:                               hostIP,
+		kcs:                                  kcs,
+		netv1a1Ifc:                           kcs.NetworkV1alpha1(),
+		queue:                                queue,
+		workers:                              workers,
+		netFabric:                            netFabric,
+		vniToVnState:                         make(map[uint32]*vnState),
+		nsnToVNStateVNI:                      make(map[k8stypes.NamespacedName]uint32),
+		nsnToLocalMainState:                  make(map[k8stypes.NamespacedName]LocalAttachmentMainState),
+		nsnToPostCreateExecReport:            make(map[k8stypes.NamespacedName]*netv1a1.ExecReport),
+		nsnToRemoteIfc:                       make(map[k8stypes.NamespacedName]netfabric.RemoteNetIfc),
+		nsnToVNIs:                            make(map[k8stypes.NamespacedName]map[uint32]struct{}),
+		allowedPrograms:                      allowedPrograms,
+		attachmentCreateToLocalIfcHistogram:  attachmentCreateToLocalIfcHistogram,
+		attachmentCreateToRemoteIfcHistogram: attachmentCreateToRemoteIfcHistogram,
+		fabricLatencyHistograms:              fabricLatencyHistograms,
+		attachmentCreateToStatusHistogram:    attachmentCreateToStatusHistogram,
+		attachmentStatusHistograms:           attachmentStatusHistograms,
+		localAttachmentsGauge:                localAttachmentsGauge,
+		remoteAttachmentsGauge:               remoteAttachmentsGauge,
+		attachmentExecDurationHistograms:     attachmentExecDurationHistograms,
+		attachmentExecStatusCounts:           attachmentExecStatusCounts,
 	}
 }
 
@@ -382,7 +471,11 @@ func (ca *ConnectionAgent) syncPreExistingLocalIfcs() error {
 		// not be matched to an attachment, or because the attachment to which
 		// it has already been matched has changed and was matched to a different
 		// interface.
-		for i, err := 1, ca.netFabric.DeleteLocalIfc(aPreExistingLocalIfc); err != nil; i++ {
+		for i := 1; true; i++ {
+			err := ca.DeleteLocalIfc(aPreExistingLocalIfc)
+			if err == nil {
+				break
+			}
 			glog.V(3).Infof("Deletion of orphan local interface %#+v failed: %s. Attempt nbr. %d",
 				aPreExistingLocalIfc,
 				err.Error(),
@@ -443,7 +536,11 @@ func (ca *ConnectionAgent) syncPreExistingRemoteIfcs() error {
 				aPreExistingRemoteIfc = oldRemoteIfc
 			} else {
 				if oldLocalState, oldLocalIfcExists := ca.getLocalAttState(nsn); oldLocalIfcExists {
-					for i, err := 1, ca.netFabric.DeleteLocalIfc(oldLocalState.LocalNetIfc); err != nil; i++ {
+					for i := 1; true; i++ {
+						err := ca.DeleteLocalIfc(oldLocalState.LocalNetIfc)
+						if err == nil {
+							break
+						}
 						glog.V(3).Infof("Deletion of orphan local interface %#+v failed: %s. Attempt nbr. %d",
 							oldLocalState.LocalNetIfc,
 							err.Error(),
@@ -465,7 +562,11 @@ func (ca *ConnectionAgent) syncPreExistingRemoteIfcs() error {
 		// or no remote attachment owning the interface was found, or the attachment
 		// owning the interface already has one. For all such cases we need to delete
 		// the interface.
-		for i, err := 1, ca.netFabric.DeleteRemoteIfc(aPreExistingRemoteIfc); err != nil; i++ {
+		for i := 1; true; i++ {
+			err := ca.DeleteRemoteIfc(aPreExistingRemoteIfc)
+			if err == nil {
+				break
+			}
 			glog.V(3).Infof("Deletion of orphan remote interface %#+v failed: %s. Attempt nbr. %d",
 				aPreExistingRemoteIfc,
 				err.Error(),
@@ -636,6 +737,7 @@ func (ca *ConnectionAgent) processExistingAtt(att *netv1a1.NetworkAttachment) er
 		attHostIP,
 		attVNI,
 		attNSN,
+		att.CreationTimestamp.Time,
 		att.Spec.PostCreateExec,
 		att.Spec.PostDeleteExec)
 	if err != nil {
@@ -691,7 +793,7 @@ func (ca *ConnectionAgent) processDeletedAtt(attNSN k8stypes.NamespacedName) err
 
 	localState, attHasLocalIfc := ca.getLocalAttState(attNSN)
 	if attHasLocalIfc {
-		if err := ca.netFabric.DeleteLocalIfc(localState.LocalNetIfc); err != nil {
+		if err := ca.DeleteLocalIfc(localState.LocalNetIfc); err != nil {
 			return err
 		}
 		ca.LaunchCommand(attNSN, &localState.LocalNetIfc, localState.PostDeleteExec, "postDelete", false)
@@ -701,7 +803,7 @@ func (ca *ConnectionAgent) processDeletedAtt(attNSN k8stypes.NamespacedName) err
 
 	remoteIfc, attHasRemoteIfc := ca.getRemoteIfc(attNSN)
 	if attHasRemoteIfc {
-		if err := ca.netFabric.DeleteRemoteIfc(remoteIfc); err != nil {
+		if err := ca.DeleteRemoteIfc(remoteIfc); err != nil {
 			return err
 		}
 		ca.unsetRemoteIfc(attNSN)
@@ -822,7 +924,7 @@ func (ca *ConnectionAgent) updateVNStateAfterAttDeparture(attName string, vni ui
 
 // createOrUpdateIfc returns the MAC address, Linux interface name,
 // post-create exec report, and possibly an error
-func (ca *ConnectionAgent) createOrUpdateIfc(attGuestIP, attHostIP gonet.IP, attVNI uint32, attNSN k8stypes.NamespacedName, PostCreateExec, PostDeleteExec []string) (attMACStr, ifcName string, pcer *netv1a1.ExecReport, err error) {
+func (ca *ConnectionAgent) createOrUpdateIfc(attGuestIP, attHostIP gonet.IP, attVNI uint32, attNSN k8stypes.NamespacedName, creationTime time.Time, PostCreateExec, PostDeleteExec []string) (attMACStr, ifcName string, pcer *netv1a1.ExecReport, err error) {
 
 	attMAC := generateMACAddr(attVNI, attGuestIP)
 	attMACStr = attMAC.String()
@@ -835,7 +937,7 @@ func (ca *ConnectionAgent) createOrUpdateIfc(attGuestIP, attHostIP gonet.IP, att
 
 	if newIfcNeedsToBeCreated {
 		if attHasLocalIfc {
-			if err := ca.netFabric.DeleteLocalIfc(oldLocalState.LocalNetIfc); err != nil {
+			if err := ca.DeleteLocalIfc(oldLocalState.LocalNetIfc); err != nil {
 				return "", "", nil, fmt.Errorf("update of network interface of attachment %s failed, old local interface %#+v could not be deleted: %s",
 					attNSN,
 					oldLocalState.LocalNetIfc,
@@ -844,7 +946,7 @@ func (ca *ConnectionAgent) createOrUpdateIfc(attGuestIP, attHostIP gonet.IP, att
 			ca.LaunchCommand(attNSN, &oldLocalState.LocalNetIfc, oldLocalState.PostDeleteExec, "postDelete", false)
 			ca.unsetLocalAttState(attNSN)
 		} else if attHasRemoteIfc {
-			if err := ca.netFabric.DeleteRemoteIfc(oldRemoteIfc); err != nil {
+			if err := ca.DeleteRemoteIfc(oldRemoteIfc); err != nil {
 				return "", "", nil, fmt.Errorf("update of network interface of attachment %s failed, old remote interface %#+v could not be deleted: %s",
 					attNSN,
 					oldRemoteIfc,
@@ -863,12 +965,17 @@ func (ca *ConnectionAgent) createOrUpdateIfc(attGuestIP, attHostIP gonet.IP, att
 				},
 				PostDeleteExec: PostDeleteExec,
 			}
-			if err := ca.netFabric.CreateLocalIfc(newLocalState.LocalNetIfc); err != nil {
+			tBeforeFabric := time.Now()
+			err := ca.netFabric.CreateLocalIfc(newLocalState.LocalNetIfc)
+			tAfterFabric := time.Now()
+			ca.fabricLatencyHistograms.With(prometheus.Labels{"op": "CreateLocalIfc", "err": strconv.FormatBool(err != nil)}).Observe(tAfterFabric.Sub(tBeforeFabric).Seconds())
+			if err != nil {
 				return "", "", nil, fmt.Errorf("creation of local network interface of attachment %s failed, interface %#+v could not be created: %s",
 					attNSN,
 					newLocalState.LocalNetIfc,
 					err.Error())
 			}
+			ca.attachmentCreateToLocalIfcHistogram.Observe(tAfterFabric.Truncate(time.Second).Sub(creationTime).Seconds())
 			ca.setLocalAttMainState(attNSN, newLocalState)
 			pcer = ca.LaunchCommand(attNSN, &newLocalState.LocalNetIfc, PostCreateExec, "postCreateExec", true)
 		} else {
@@ -878,12 +985,17 @@ func (ca *ConnectionAgent) createOrUpdateIfc(attGuestIP, attHostIP gonet.IP, att
 				GuestIP:  attGuestIP,
 				HostIP:   attHostIP,
 			}
-			if err := ca.netFabric.CreateRemoteIfc(newRemoteIfc); err != nil {
+			tBefore := time.Now()
+			err := ca.netFabric.CreateRemoteIfc(newRemoteIfc)
+			tAfter := time.Now()
+			ca.fabricLatencyHistograms.With(prometheus.Labels{"op": "CreateRemoteIfc", "err": strconv.FormatBool(err != nil)}).Observe(tAfter.Sub(tBefore).Seconds())
+			if err != nil {
 				return "", "", nil, fmt.Errorf("creation of remote network interface of attachment %s failed, interface %#+v could not be created: %s",
 					attNSN,
 					newRemoteIfc,
 					err.Error())
 			}
+			ca.attachmentCreateToRemoteIfcHistogram.Observe(tAfter.Truncate(time.Second).Sub(creationTime).Seconds())
 			ca.assignRemoteIfc(attNSN, newRemoteIfc)
 		}
 	} else if attHasLocalIfc {
@@ -900,7 +1012,13 @@ func (ca *ConnectionAgent) setAttStatus(att *netv1a1.NetworkAttachment, macAddrS
 	att2.Status.HostIP = ca.hostIP.String()
 	att2.Status.IfcName = ifcName
 	att2.Status.PostCreateExecReport = pcer
+	tBeforeStatus := time.Now()
 	updatedAtt, err := ca.netv1a1Ifc.NetworkAttachments(att2.Namespace).Update(att2)
+	tAfterStatus := time.Now()
+	ca.attachmentStatusHistograms.With(prometheus.Labels{"err": strconv.FormatBool(err != nil)}).Observe(tAfterStatus.Sub(tBeforeStatus).Seconds())
+	if err == nil && att.Status.IfcName == "" {
+		ca.attachmentCreateToStatusHistogram.Observe(tAfterStatus.Truncate(time.Second).Sub(att.CreationTimestamp.Time).Seconds())
+	}
 	return updatedAtt, err
 }
 
@@ -1015,6 +1133,7 @@ func (ca *ConnectionAgent) setLocalAttMainState(nsn k8stypes.NamespacedName, sta
 	ca.nsnToLocalStateMutex.Lock()
 	defer ca.nsnToLocalStateMutex.Unlock()
 	ca.nsnToLocalMainState[nsn] = state
+	ca.localAttachmentsGauge.Set(float64(len(ca.nsnToLocalMainState)))
 }
 
 func (ca *ConnectionAgent) setExecReport(nsn k8stypes.NamespacedName, er *netv1a1.ExecReport) {
@@ -1037,6 +1156,7 @@ func (ca *ConnectionAgent) assignRemoteIfc(nsn k8stypes.NamespacedName, ifc netf
 	ca.nsnToRemoteIfcMutex.Lock()
 	defer ca.nsnToRemoteIfcMutex.Unlock()
 	ca.nsnToRemoteIfc[nsn] = ifc
+	ca.remoteAttachmentsGauge.Set(float64(len(ca.nsnToRemoteIfc)))
 }
 
 func (ca *ConnectionAgent) getVNStateVNI(nsn k8stypes.NamespacedName) (vni uint32, vniFound bool) {
@@ -1063,12 +1183,14 @@ func (ca *ConnectionAgent) unsetLocalAttState(nsn k8stypes.NamespacedName) {
 	defer ca.nsnToLocalStateMutex.Unlock()
 	delete(ca.nsnToLocalMainState, nsn)
 	delete(ca.nsnToPostCreateExecReport, nsn)
+	ca.localAttachmentsGauge.Set(float64(len(ca.nsnToLocalMainState)))
 }
 
 func (ca *ConnectionAgent) unsetRemoteIfc(nsn k8stypes.NamespacedName) {
 	ca.nsnToRemoteIfcMutex.Lock()
 	defer ca.nsnToRemoteIfcMutex.Unlock()
 	delete(ca.nsnToRemoteIfc, nsn)
+	ca.remoteAttachmentsGauge.Set(float64(len(ca.nsnToRemoteIfc)))
 }
 
 func (ca *ConnectionAgent) addVNI(nsn k8stypes.NamespacedName, vni uint32) {
@@ -1293,4 +1415,20 @@ func aggregateErrors(sep string, errs ...error) error {
 // TODO consider switching to pointers wrt value for the interface
 func ifcNeedsUpdate(ifcHostIP, newHostIP gonet.IP, ifcMAC, newMAC gonet.HardwareAddr) bool {
 	return !ifcHostIP.Equal(newHostIP) || !bytes.Equal(ifcMAC, newMAC)
+}
+
+func (ca *ConnectionAgent) DeleteLocalIfc(ifc netfabric.LocalNetIfc) error {
+	tBefore := time.Now()
+	err := ca.netFabric.DeleteLocalIfc(ifc)
+	tAfter := time.Now()
+	ca.fabricLatencyHistograms.With(prometheus.Labels{"op": "DeleteLocalIfc", "err": strconv.FormatBool(err != nil)}).Observe(tAfter.Sub(tBefore).Seconds())
+	return err
+}
+
+func (ca *ConnectionAgent) DeleteRemoteIfc(ifc netfabric.RemoteNetIfc) error {
+	tBefore := time.Now()
+	err := ca.netFabric.DeleteRemoteIfc(ifc)
+	tAfter := time.Now()
+	ca.fabricLatencyHistograms.With(prometheus.Labels{"op": "DeleteRemoteIfc", "err": strconv.FormatBool(err != nil)}).Observe(tAfter.Sub(tBefore).Seconds())
+	return err
 }
