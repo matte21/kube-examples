@@ -13,5 +13,5 @@
 # limitations under the License.
 
 FROM ubuntu:16.04
-ADD network-apiserver /
+COPY network-apiserver /
 ENTRYPOINT ["/network-apiserver"]
