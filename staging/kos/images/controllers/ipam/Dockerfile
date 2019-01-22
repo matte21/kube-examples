@@ -13,5 +13,5 @@
 # limitations under the License.
 
 FROM ubuntu:16.04
-ADD ipam-controller /
+COPY ipam-controller /
 ENTRYPOINT ["/ipam-controller"]

@@ -14,6 +14,6 @@
 
 FROM ubuntu:16.04
 RUN apt-get update && apt-get -y install iproute2 iputils-ping openvswitch-switch
-ADD connection-agent /
-ADD test-scripts/* /usr/local/kos/bin/
+COPY connection-agent /
+COPY test-scripts/* /usr/local/kos/bin/
 ENTRYPOINT ["/connection-agent"]
