@@ -29,6 +29,7 @@ import (
 	"github.com/golang/glog"
 
 	"k8s.io/client-go/tools/clientcmd"
+	"k8s.io/client-go/rest"
 	"k8s.io/client-go/util/workqueue"
 
 	kosclientset "k8s.io/examples/staging/kos/pkg/client/clientset/versioned"
@@ -107,6 +108,10 @@ func main() {
 	}
 	clientCfg.QPS = float32(clientQPS)
 	clientCfg.Burst = clientBurst
+	clientCfg.Host = "network-api:443"
+	// TODO: give our apiservers verifiable identities
+	clientCfg.TLSClientConfig = rest.TLSClientConfig{Insecure: true}
+	clientCfg = rest.AddUserAgent(clientCfg, nodeName)
 
 	allowedProgramsSlice := strings.Split(allowedPrograms, ",")
 	allowedProgramsSet := make(map[string]struct{})

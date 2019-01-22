@@ -63,6 +63,17 @@ This example adds the following to the Kubernetes cluster.
 All components are created in the Kubernetes API namespace
 `example-com`.
 
+The controllers (i.e., IPAM controller and connection agents) connect
+directly to the API extension servers rather than utilizing the
+proxying ability of the Kubernetes main apiservers, avoiding
+unnecessary load and configuration challenges on those main
+apiservers.  The connections are made to the DNS name of the
+Kubernetes service implemented by the API extension servers, and this
+engages the TCP connection load balancing of Kubernetes (i.e.,
+normally the kube-proxy).  If the number of worker nodes is low then
+this load balancing may not be very balanced, and adjustments are made
+only as new TCP connections are made.
+
 
 ## The SDN
 
@@ -129,6 +140,29 @@ The problems that the SDN solves are as follows.
   NetworkAttachment to that VNI --- and should not be communicated to
   other nodes (because that communication would impose unnecessary
   costs).
+
+
+### The SDN Datapath
+
+On each worker node this SDN creates one OVS "bridge", named `kos`.
+In addition to the implied port named after the bridge, the SDN
+creates one special OVS port.  It is named `vtep` and, as its name
+suggests, it exchanges encapsulated traffic with its peers on other
+nodes (relying on the IP transport abilities of the nodes).
+
+For each local NetworkAttachment, the SDN creates another OVS port on
+the `kos` bridge.  The name and MAC address of the Linux network
+interface for this port are reported in the NetworkAttachment's
+status.  The SDN does not impose IP layer configuration on this Linux
+network interface (this might not work well, due to the potentially
+overlapping IPs between virtual networks) but rather leaves that up to
+the client.
+
+For each local NetworkAttachment, the SDN creates two OpenFlow flows
+in the bridge...
+
+For each remote NetworkAttachment, the SDN creates one OpenFlow flow
+in the bridge...
 
 
 ## The IPAM Controller
@@ -266,12 +300,12 @@ test driver.
 ### Where KOS Can Be Deployed
 
 KOS can be run on any standard Kubernetes cluster, provided you can
-run privileged containers there.  Privileged containers are used for
-the following.
+run privileged containers there and an adequate version of OVS can be
+installed or found on each worker node.  Privileged containers are
+used for the following.
 
-- OVS
-
-- Provision data directories for Prometheus and Grafana
+- Provision data directories for Prometheus and Grafana (if you deploy
+  them using the option here).
 
 - Define the CRD and cluster role for the etcd operator
 
@@ -301,6 +335,12 @@ You will need the following installed on your build/ops machine.
 
 With `kos` as your current working directory, `glide install` to
 populate the `kos/vendor` directory.
+
+On each worker machine in your Kube cluster you will need the
+following.
+
+- OVS (the `openvswitch-switch` package), release 2.2 or later
+
 
 ### Prometheus and Grafana
 
