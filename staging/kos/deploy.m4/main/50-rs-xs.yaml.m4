@@ -4,7 +4,7 @@ metadata:
   name: network-apiserver
   namespace: example-com
 spec:
-  replicas: 1
+  replicas: 2
   selector:
     matchLabels:
       network-apiserver: "true"
@@ -12,9 +12,6 @@ spec:
     metadata:
       labels:
         network-apiserver: "true"
-      annotations:
-        prometheus.io/scrape: "true"
-        prometheus.io/port: "9732"
     spec:
       serviceAccountName: network-apiserver
       containers:
@@ -23,12 +20,5 @@ spec:
         imagePullPolicy: Always
         command:
         - /network-apiserver
-        - --etcd-servers=http://localhost:2379
+        - --etcd-servers=http://the-etcd-cluster-client:2379
         - -v=5
-      - name: etcd
-        image: quay.io/coreos/etcd:v3.3.11
-        command:
-        - /usr/local/bin/etcd
-        - --debug
-        - --metrics=extensive
-        - --listen-metrics-urls=http://0.0.0.0:9732
