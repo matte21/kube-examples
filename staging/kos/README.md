@@ -37,13 +37,17 @@ other using their `InternalIP` addresses.
 
 This example adds the following to the Kubernetes cluster.
 
-- An API extension server Deployment, with 1 replica, with a pod
-  template that runs two containers:
+- The [etcd Operator](https://github.com/coreos/etcd-operator),
+  release 0.9.3
 
-  - the API extension server container that serves the custom resources
-    used in this example, and
+- An etcd cluster managed by the etcd Operator.  The cluster initially
+  has three members and that number can be adjusted in the usual way
+  for the Operator.  The etcd cluster is _not_ yet secured.
 
-  - an etcd server dedicated to this example.
+- An API extension server Deployment.  The deployment initially has
+  two members and the number can be adjusted in the usual ways.  These
+  extension servers serve the custom resources used in this example,
+  using the etcd cluster for storage.
 
 - A Deployment of a controller that assigns IP addresses.
 
@@ -262,9 +266,14 @@ test driver.
 ### Where KOS Can Be Deployed
 
 KOS can be run on any standard Kubernetes cluster, provided you can
-run privileged containers there.  The only part of KOS that actually
-requires privilege is the part that installs and uses OVS.  (Maybe
-Prometheus and Grafana will also require privilege.)
+run privileged containers there.  Privileged containers are used for
+the following.
+
+- OVS
+
+- Provision data directories for Prometheus and Grafana
+
+- Define the CRD and cluster role for the etcd operator
 
 ### Introduction to Build and Deploy
 
