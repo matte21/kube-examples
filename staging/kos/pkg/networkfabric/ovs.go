@@ -46,7 +46,7 @@ const (
 	macRegexpStr    = "([0-9A-Fa-f]{2}[:-]){5}([0-9A-Fa-f]{2})"
 
 	// the command to dump the OpenFlow flows contains some hex numbers prefixed
-	// by 0x. Store 0x in a const used to remove such leading chars before
+	// by 0x or 0X. Store 0xX in a const used to remove such leading chars before
 	// parsing hex numbers
 	hexPrefixChars = "0xX"
 
@@ -60,7 +60,7 @@ const (
 type ovsFabric struct {
 	bridge         string
 	vtep           string
-	vtepOfport     uint16
+	vtepOFport     uint16
 	flowParsingKit *regexpKit
 }
 
@@ -112,8 +112,8 @@ func (f *ovsFabric) CreateLocalIfc(ifc LocalNetIfc) (err error) {
 		// guarantee that in case of error the client will retry to create ifc,
 		// or, even if there's a retry, the ifc name might have changed
 		if err != nil {
-			// wait a little bit to reduce chances of another failure in case
-			// OvS is experiencing transient failures
+			// wait to reduce chances of another failure in case OvS is
+			// experiencing transient failures
 			time.Sleep(cleanupDelay)
 			if cleanUpErr := f.deleteIfc(ifc.Name); cleanUpErr != nil {
 				glog.Errorf("Could not delete local interface %s during clean up after failure: %s",
@@ -123,12 +123,12 @@ func (f *ovsFabric) CreateLocalIfc(ifc LocalNetIfc) (err error) {
 		}
 	}()
 
-	ofport, err := f.getIfcOfport(ifc.Name)
+	ofPort, err := f.getIfcOFport(ifc.Name)
 	if err != nil {
 		return
 	}
 
-	if err = f.addLocalIfcFlows(ofport, ifc.VNI, ifc.GuestMAC, ifc.GuestIP); err != nil {
+	if err = f.addLocalIfcFlows(ofPort, ifc.VNI, ifc.GuestMAC, ifc.GuestIP); err != nil {
 		return
 	}
 
@@ -140,12 +140,12 @@ func (f *ovsFabric) CreateLocalIfc(ifc LocalNetIfc) (err error) {
 }
 
 func (f *ovsFabric) DeleteLocalIfc(ifc LocalNetIfc) error {
-	ofport, err := f.getIfcOfport(ifc.Name)
+	ofPort, err := f.getIfcOFport(ifc.Name)
 	if err != nil {
 		return err
 	}
 
-	if err := f.deleteLocalIfcFlows(ofport, ifc.VNI, ifc.GuestMAC, ifc.GuestIP); err != nil {
+	if err := f.deleteLocalIfcFlows(ofPort, ifc.VNI, ifc.GuestMAC, ifc.GuestIP); err != nil {
 		return err
 	}
 
@@ -178,7 +178,7 @@ func (f *ovsFabric) DeleteRemoteIfc(ifc RemoteNetIfc) error {
 
 func (f *ovsFabric) ListLocalIfcs() ([]LocalNetIfc, error) {
 	// build a map from openflow port nbr to local ifc name
-	ofportToIfcName, err := f.getOfportsToLocalIfcNames()
+	ofPortToIfcName, err := f.getOFportsToLocalIfcNames()
 	if err != nil {
 		return nil, err
 	}
@@ -195,14 +195,14 @@ func (f *ovsFabric) ListLocalIfcs() ([]LocalNetIfc, error) {
 	// flows it is associated with
 	glog.V(4).Infof("Pairing ARP and normal Datalink traffic flows of local interfaces in bridge %s...",
 		f.bridge)
-	ofportToLocalFlowsPairs := f.ofportToLocalFlowsPairs(localFlows)
+	ofPortToLocalFlowsPairs := f.ofPortToLocalFlowsPairs(localFlows)
 
-	// use the map from ofports to pairs of flows to build a map from ofport
+	// use the map from ofPorts to pairs of flows to build a map from ofPort
 	// to LocalNetIfc structs with all the fields set but the name (because no
 	// flow carries info about the interface name)
 	glog.V(4).Infof("Parsing flows pairs found in bridge %s into local Network Interfaces...",
 		f.bridge)
-	ofportToNamelessIfc := f.parseLocalFlowsPairs(ofportToLocalFlowsPairs)
+	ofPortToNamelessIfc := f.parseLocalFlowsPairs(ofPortToLocalFlowsPairs)
 
 	// assign a name to the nameless ifcs built with the previous instruction.
 	// completeIfcs are those to return, incompleteIfcs are interfaces for whom
@@ -212,7 +212,7 @@ func (f *ovsFabric) ListLocalIfcs() ([]LocalNetIfc, error) {
 	// the interface for clean up fails.
 	glog.V(4).Infof("Naming local Network Interfaces parsed out of bridge %s...",
 		f.bridge)
-	completeIfcs, incompleteIfcs := f.nameIfcs(ofportToIfcName, ofportToNamelessIfc)
+	completeIfcs, incompleteIfcs := f.nameIfcs(ofPortToIfcName, ofPortToNamelessIfc)
 
 	// best effort attempt to delete orphan interfaces
 	glog.V(4).Infof("Deleting network devices connected to bridge %s for whom OpenFlow flows were not found...",
@@ -265,11 +265,11 @@ func (f *ovsFabric) initBridge(name string) error {
 		return err
 	}
 
-	vtepOfport, err := f.getIfcOfport(f.vtep)
+	vtepOFport, err := f.getIfcOFport(f.vtep)
 	if err != nil {
 		return err
 	}
-	f.vtepOfport = vtepOfport
+	f.vtepOFport = vtepOFport
 
 	if err := f.addDefaultFlows(); err != nil {
 		return err
@@ -306,10 +306,10 @@ func (f *ovsFabric) addVTEP() error {
 	return nil
 }
 
-func (f *ovsFabric) getIfcOfport(ifc string) (uint16, error) {
-	getIfcOfport := f.newGetIfcOfportCmd(ifc)
+func (f *ovsFabric) getIfcOFport(ifc string) (uint16, error) {
+	getIfcOFport := f.newGetIfcOFportCmd(ifc)
 
-	outBytes, err := getIfcOfport.CombinedOutput()
+	outBytes, err := getIfcOFport.CombinedOutput()
 	out := strings.TrimRight(string(outBytes), "\n")
 	if err != nil {
 		return 0, fmt.Errorf("failed to retrieve OpenFlow port of interface %s in bridge %s: %s: %s",
@@ -319,13 +319,13 @@ func (f *ovsFabric) getIfcOfport(ifc string) (uint16, error) {
 			out)
 	}
 
-	ofport := parseOfport(out)
+	ofPort := parseOFport(out)
 	glog.V(4).Infof("Retrieved OpenFlow port nbr (%d) of network device %s in bridge %s",
-		ofport,
+		ofPort,
 		ifc,
 		f.bridge)
 
-	return ofport, nil
+	return ofPort, nil
 }
 
 func (f *ovsFabric) addDefaultFlows() error {
@@ -384,18 +384,18 @@ func (f *ovsFabric) deleteIfc(ifc string) error {
 	return nil
 }
 
-func (f *ovsFabric) addLocalIfcFlows(ofport uint16, tunID uint32, dlDst net.HardwareAddr, arpTPA net.IP) error {
+func (f *ovsFabric) addLocalIfcFlows(ofPort uint16, tunID uint32, dlDst net.HardwareAddr, arpTPA net.IP) error {
 	tunnelingFlow := fmt.Sprintf("table=0,in_port=%d,actions=set_field:%#x->tun_id,resubmit(,1)",
-		ofport,
+		ofPort,
 		tunID)
 	dlTrafficFlow := fmt.Sprintf("table=1,tun_id=%#x,dl_dst=%s,actions=output:%d",
 		tunID,
 		dlDst,
-		ofport)
+		ofPort)
 	arpFlow := fmt.Sprintf("table=1,tun_id=%#x,arp,arp_tpa=%s,actions=output:%d",
 		tunID,
 		arpTPA,
-		ofport)
+		ofPort)
 
 	addFlows := f.newAddFlowsCmd(tunnelingFlow, dlTrafficFlow, arpFlow)
 
@@ -415,8 +415,8 @@ func (f *ovsFabric) addLocalIfcFlows(ofport uint16, tunID uint32, dlDst net.Hard
 	return nil
 }
 
-func (f *ovsFabric) deleteLocalIfcFlows(ofport uint16, tunID uint32, dlDst net.HardwareAddr, arpTPA net.IP) error {
-	tunnelingFlow := fmt.Sprintf("in_port=%d", ofport)
+func (f *ovsFabric) deleteLocalIfcFlows(ofPort uint16, tunID uint32, dlDst net.HardwareAddr, arpTPA net.IP) error {
+	tunnelingFlow := fmt.Sprintf("in_port=%d", ofPort)
 	dlTrafficFlow := fmt.Sprintf("tun_id=%#x,dl_dst=%s", tunID, dlDst)
 	arpFlow := fmt.Sprintf("tun_id=%#x,arp,arp_tpa=%s", tunID, arpTPA)
 
@@ -454,13 +454,13 @@ func (f *ovsFabric) addRemoteIfcFlows(tunID uint32, dlDst net.HardwareAddr, tunD
 		tunID,
 		dlDst,
 		tunDst,
-		f.vtepOfport)
+		f.vtepOFport)
 	arpFlow := fmt.Sprintf("table=1,cookie=%d,tun_id=%#x,arp,arp_tpa=%s,actions=set_field:%s->tun_dst,output:%d",
 		cookie,
 		tunID,
 		arpTPA,
 		tunDst,
-		f.vtepOfport)
+		f.vtepOFport)
 
 	addFlows := f.newAddFlowsCmd(dlTrafficFlow, arpFlow)
 
@@ -504,18 +504,18 @@ func (f *ovsFabric) deleteRemoteIfcFlows(tunID uint32, dlDst net.HardwareAddr, a
 	return nil
 }
 
-func parseOfport(ofport string) uint16 {
-	ofp, _ := strconv.ParseUint(ofport, 10, 16)
-	return uint16(ofp)
+func parseOFport(ofPort string) uint16 {
+	ofP, _ := strconv.ParseUint(ofPort, 10, 16)
+	return uint16(ofP)
 }
 
-func (f *ovsFabric) getOfportsToLocalIfcNames() (map[uint16]string, error) {
-	listOfportsAndIfcNames := f.newListOfportsAndIfcNamesCmd()
+func (f *ovsFabric) getOFportsToLocalIfcNames() (map[uint16]string, error) {
+	listOFportsAndIfcNames := f.newListOFportsAndIfcNamesCmd()
 
-	out, err := listOfportsAndIfcNames.CombinedOutput()
+	out, err := listOFportsAndIfcNames.CombinedOutput()
 	outStr := strings.TrimRight(string(out), "\n")
 	if err != nil {
-		return nil, fmt.Errorf("failed to list local ifcs names and ofports: %s: %s",
+		return nil, fmt.Errorf("failed to list local ifcs names and ofPorts: %s: %s",
 			err.Error(),
 			outStr)
 	}
@@ -523,7 +523,7 @@ func (f *ovsFabric) getOfportsToLocalIfcNames() (map[uint16]string, error) {
 	glog.V(4).Infof("Parsing OpenFlow ports and Interface names in bridge %s...",
 		f.bridge)
 
-	return f.parseOfportsAndIfcNames(outStr), nil
+	return f.parseOFportsAndIfcNames(outStr), nil
 }
 
 func (f *ovsFabric) getUsefulLocalFlows() ([]string, error) {
@@ -542,25 +542,25 @@ func (f *ovsFabric) getRemoteFlows() ([]string, error) {
 	return onlyRemoteFlowsFunc(flows), nil
 }
 
-func (f *ovsFabric) ofportToLocalFlowsPairs(flows []string) map[uint16][]string {
-	ofportToFlowsPairs := make(map[uint16][]string, len(flows)/2)
+func (f *ovsFabric) ofPortToLocalFlowsPairs(flows []string) map[uint16][]string {
+	ofPortToFlowsPairs := make(map[uint16][]string, len(flows)/2)
 	for _, aFlow := range flows {
-		ofport := f.usefulLocalFlowOfport(aFlow)
-		ofportToFlowsPairs[ofport] = append(ofportToFlowsPairs[ofport], aFlow)
-		if len(ofportToFlowsPairs[ofport]) == 2 {
-			glog.V(5).Infof("Paired flows \"%s\" \"%s\"", ofportToFlowsPairs[ofport][0], ofportToFlowsPairs[ofport][1])
+		ofPort := f.usefulLocalFlowOFport(aFlow)
+		ofPortToFlowsPairs[ofPort] = append(ofPortToFlowsPairs[ofPort], aFlow)
+		if len(ofPortToFlowsPairs[ofPort]) == 2 {
+			glog.V(5).Infof("Paired flows \"%s\" \"%s\"", ofPortToFlowsPairs[ofPort][0], ofPortToFlowsPairs[ofPort][1])
 		}
 	}
-	return ofportToFlowsPairs
+	return ofPortToFlowsPairs
 }
 
-func (f *ovsFabric) parseLocalFlowsPairs(ofportToPair map[uint16][]string) map[uint16]*LocalNetIfc {
-	ofportToIfc := make(map[uint16]*LocalNetIfc, len(ofportToPair))
-	for ofport, aPair := range ofportToPair {
+func (f *ovsFabric) parseLocalFlowsPairs(ofPortToPair map[uint16][]string) map[uint16]*LocalNetIfc {
+	ofPortToIfc := make(map[uint16]*LocalNetIfc, len(ofPortToPair))
+	for ofPort, aPair := range ofPortToPair {
 		glog.V(5).Infof("Parsing flows pair \"%s\" \"%s\"...", aPair[0], aPair[1])
-		ofportToIfc[ofport] = f.parseLocalFlowPair(aPair)
+		ofPortToIfc[ofPort] = f.parseLocalFlowPair(aPair)
 	}
-	return ofportToIfc
+	return ofPortToIfc
 }
 
 func (f *ovsFabric) pairRemoteFlowsPerIfc(flows []string) [][]string {
@@ -593,15 +593,15 @@ func (f *ovsFabric) parseRemoteFlowsPairs(flowsPairs [][]string) []RemoteNetIfc 
 	return ifcs
 }
 
-func (f *ovsFabric) nameIfcs(ofportToIfcName map[uint16]string, ofportToIfc map[uint16]*LocalNetIfc) ([]LocalNetIfc, []string) {
+func (f *ovsFabric) nameIfcs(ofPortToIfcName map[uint16]string, ofPortToIfc map[uint16]*LocalNetIfc) ([]LocalNetIfc, []string) {
 	// we assume that most of the interfaces can be completed (both the network
 	// device and the OpenFlow flows were found), that's why completeIfcs
-	// has capacity len(ofportToIfc) whereas incompleteIfcs has capacity 0
-	completeIfcs := make([]LocalNetIfc, 0, len(ofportToIfc))
+	// has capacity len(ofPortToIfc) whereas incompleteIfcs has capacity 0
+	completeIfcs := make([]LocalNetIfc, 0, len(ofPortToIfc))
 	incompleteIfcs := make([]string, 0)
 
-	for ofport, name := range ofportToIfcName {
-		ifc := ofportToIfc[ofport]
+	for ofPort, name := range ofPortToIfcName {
+		ifc := ofPortToIfc[ofPort]
 		if ifc == nil {
 			incompleteIfcs = append(incompleteIfcs, name)
 			glog.V(5).Infof("No flows found for network device %s connected to bridge %s",
@@ -633,27 +633,27 @@ func (f *ovsFabric) deleteIncompleteIfcs(ifcs []string) {
 	}
 }
 
-func (f *ovsFabric) parseOfportsAndIfcNames(ofportsAndIfcNamesRaw string) map[uint16]string {
-	ofportsAndIfcNames := strings.Split(ofportsAndIfcNamesRaw, "\n")
-	ofportToIfcName := make(map[uint16]string, len(ofportsAndIfcNames))
+func (f *ovsFabric) parseOFportsAndIfcNames(ofPortsAndIfcNamesRaw string) map[uint16]string {
+	ofPortsAndIfcNames := strings.Split(ofPortsAndIfcNamesRaw, "\n")
+	ofPortToIfcName := make(map[uint16]string, len(ofPortsAndIfcNames))
 
-	for _, anOfportAndIfcNamePair := range ofportsAndIfcNames {
-		f.parseOfportAndIfcName(anOfportAndIfcNamePair, ofportToIfcName)
+	for _, anOFportAndIfcNamePair := range ofPortsAndIfcNames {
+		f.parseOFportAndIfcName(anOFportAndIfcNamePair, ofPortToIfcName)
 	}
 
-	return ofportToIfcName
+	return ofPortToIfcName
 }
 
-func (f *ovsFabric) parseOfportAndIfcName(ofportAndNameJoined string, ofportToIfcName map[uint16]string) {
+func (f *ovsFabric) parseOFportAndIfcName(ofPortAndNameJoined string, ofPortToIfcName map[uint16]string) {
 	glog.V(5).Infof("Parsing OpenFlow port number and interface name pair %s from bridge %s",
-		ofportAndNameJoined,
+		ofPortAndNameJoined,
 		f.bridge)
 
-	ofportAndName := strings.Fields(ofportAndNameJoined)
+	ofPortAndName := strings.Fields(ofPortAndNameJoined)
 
 	// the command that returns interface names for some reason wraps them in
 	// double quotes, hence we need to get rid of them
-	ofportAndName[1] = strings.Trim(ofportAndName[1], "\"")
+	ofPortAndName[1] = strings.Trim(ofPortAndName[1], "\"")
 
 	// TODO this check is not enough. If there's more than one OvS bridge the
 	// interfaces of all bridges are returned, and we might add interfaces which
@@ -663,8 +663,8 @@ func (f *ovsFabric) parseOfportAndIfcName(ofportAndNameJoined string, ofportToIf
 	// interface name to be of a different type than just strings, that enforces
 	// a certain pattern). Or we could have this fabric set the name rather than
 	// the connection agent.
-	if ofportAndName[1] != f.vtep && ofportAndName[1] != f.bridge {
-		ofportToIfcName[parseOfport(ofportAndName[0])] = ofportAndName[1]
+	if ofPortAndName[1] != f.vtep && ofPortAndName[1] != f.bridge {
+		ofPortToIfcName[parseOFport(ofPortAndName[0])] = ofPortAndName[1]
 	}
 }
 
@@ -735,11 +735,11 @@ func parseGetFlowsOutput(output string) []string {
 }
 
 // useful means the flow is not a tunneling flow
-func (f *ovsFabric) usefulLocalFlowOfport(flow string) uint16 {
-	return parseOfport(f.arpOrDlTrafficFlowOfport(flow))
+func (f *ovsFabric) usefulLocalFlowOFport(flow string) uint16 {
+	return parseOFport(f.arpOrDlTrafficFlowOFport(flow))
 }
 
-func (f *ovsFabric) arpOrDlTrafficFlowOfport(flow string) string {
+func (f *ovsFabric) arpOrDlTrafficFlowOFport(flow string) string {
 	return f.flowParsingKit.decNbr.FindString(f.flowParsingKit.output.FindString(flow))
 }
 
@@ -857,7 +857,7 @@ func (f *ovsFabric) newAddVTEPCmd() *exec.Cmd {
 		"option:remote_ip=flow")
 }
 
-func (f *ovsFabric) newGetIfcOfportCmd(ifc string) *exec.Cmd {
+func (f *ovsFabric) newGetIfcOFportCmd(ifc string) *exec.Cmd {
 	return exec.Command("ovs-vsctl",
 		"get",
 		"interface",
@@ -911,7 +911,7 @@ func (f *ovsFabric) newGetFlowsCmd() *exec.Cmd {
 	return exec.Command("ovs-ofctl", "dump-flows", f.bridge)
 }
 
-func (f *ovsFabric) newListOfportsAndIfcNamesCmd() *exec.Cmd {
+func (f *ovsFabric) newListOFportsAndIfcNamesCmd() *exec.Cmd {
 	return exec.Command("ovs-vsctl",
 		"-f",
 		"table",
