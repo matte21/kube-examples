@@ -14,6 +14,7 @@ peer_name=$6
 ip link show $ifc_name || exit 2
 ip netns add $netns_name
 ip link set $ifc_name netns $netns_name
+ip netns exec $netns_name ip link set $ifc_name up
 ip netns exec $netns_name ip addr add $ifc_ip dev $ifc_name
 ip netns exec $netns_name ip addr
 ip netns exec $netns_name ip route
