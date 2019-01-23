@@ -867,10 +867,7 @@ func (f *ovsFabric) newGetIfcOFportCmd(ifc string) *exec.Cmd {
 }
 
 func (f *ovsFabric) newCreateIfcCmd(ifc string, mac net.HardwareAddr) *exec.Cmd {
-	// TODO think thoroughly if we need more than just the --may-exist flag
-	// (e.g. what happens if the interface MAC changed?)
 	return exec.Command("ovs-vsctl",
-		"--may-exist",
 		"add-port",
 		f.bridge,
 		ifc,
