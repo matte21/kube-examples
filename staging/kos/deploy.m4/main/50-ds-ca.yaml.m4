@@ -24,6 +24,11 @@ spec:
         volumeMounts:
         - name: ovs-socks-dir
           mountPath: /var/run/openvswitch
+        - name: netns-dir
+          mountPath: /var/run/netns
+          mountPropagation: Bidirectional
+        securityContext:
+          privileged: true
         env:
         - name: NODE_NAME
           valueFrom:
@@ -41,7 +46,11 @@ spec:
         - -allowed-programs=/usr/local/kos/bin/TestByPing,/usr/local/kos/bin/RemoveNetNS
         - -netfabric=ovs
       volumes:
-        - name: ovs-socks-dir
-          hostPath:
-            path: /var/run/openvswitch
-            type: Directory
+      - name: ovs-socks-dir
+        hostPath:
+          path: /var/run/openvswitch
+          type: Directory
+      - name: netns-dir
+        hostPath:
+          path: /var/run/netns
+          type: DirectoryOrCreate

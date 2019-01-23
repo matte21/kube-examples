@@ -316,7 +316,27 @@ func NewConnectionAgent(localNodeName string,
 			ConstLabels: map[string]string{"node": localNodeName},
 		},
 		[]string{"what", "exitStatus"})
-	prometheus.MustRegister(attachmentCreateToLocalIfcHistogram, attachmentCreateToRemoteIfcHistogram, fabricLatencyHistograms, attachmentCreateToStatusHistogram, attachmentStatusHistograms, localAttachmentsGauge, remoteAttachmentsGauge, attachmentExecDurationHistograms, attachmentExecStatusCounts)
+	fabricNameCounts := prometheus.NewCounterVec(
+		prometheus.CounterOpts{
+			Namespace:   MetricsNamespace,
+			Subsystem:   MetricsSubsystem,
+			Name:        "fabric_count",
+			Help:        "Indicator of chosen fabric implementation",
+			ConstLabels: map[string]string{"node": localNodeName},
+		},
+		[]string{"fabric"})
+	workerCount := prometheus.NewCounter(
+		prometheus.CounterOpts{
+			Namespace:   MetricsNamespace,
+			Subsystem:   MetricsSubsystem,
+			Name:        "worker_count",
+			Help:        "Number of queue worker threads",
+			ConstLabels: map[string]string{"node": localNodeName},
+		})
+	prometheus.MustRegister(attachmentCreateToLocalIfcHistogram, attachmentCreateToRemoteIfcHistogram, fabricLatencyHistograms, attachmentCreateToStatusHistogram, attachmentStatusHistograms, localAttachmentsGauge, remoteAttachmentsGauge, attachmentExecDurationHistograms, attachmentExecStatusCounts, fabricNameCounts, workerCount)
+
+	fabricNameCounts.With(prometheus.Labels{"fabric": netFabric.Name()}).Inc()
+	workerCount.Add(float64(workers))
 
 	return &ConnectionAgent{
 		localNodeName:                        localNodeName,
