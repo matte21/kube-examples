@@ -26,10 +26,180 @@
       "datasource": "prometheus",
       "fill": 1,
       "gridPos": {
+        "h": 9,
+        "w": 12,
+        "x": 0,
+        "y": 0
+      },
+      "id": 21,
+      "legend": {
+        "avg": false,
+        "current": false,
+        "max": false,
+        "min": false,
+        "show": true,
+        "total": false,
+        "values": false
+      },
+      "lines": true,
+      "linewidth": 1,
+      "links": [],
+      "nullPointMode": "null",
+      "percentage": false,
+      "pointradius": 5,
+      "points": false,
+      "renderer": "flot",
+      "seriesOverrides": [],
+      "spaceLength": 10,
+      "stack": false,
+      "steppedLine": false,
+      "targets": [
+        {
+          "expr": "sum(kos_agent_fabric_count) by (fabric)",
+          "format": "time_series",
+          "intervalFactor": 1,
+          "legendFormat": "{{ fabric }}",
+          "refId": "A"
+        }
+      ],
+      "thresholds": [],
+      "timeFrom": null,
+      "timeRegions": [],
+      "timeShift": null,
+      "title": "Number of CA, By Fabric Name",
+      "tooltip": {
+        "shared": true,
+        "sort": 0,
+        "value_type": "individual"
+      },
+      "type": "graph",
+      "xaxis": {
+        "buckets": null,
+        "mode": "time",
+        "name": null,
+        "show": true,
+        "values": []
+      },
+      "yaxes": [
+        {
+          "format": "short",
+          "label": null,
+          "logBase": 1,
+          "max": null,
+          "min": null,
+          "show": true
+        },
+        {
+          "format": "short",
+          "label": null,
+          "logBase": 1,
+          "max": null,
+          "min": null,
+          "show": true
+        }
+      ],
+      "yaxis": {
+        "align": false,
+        "alignLevel": null
+      }
+    },
+    {
+      "aliasColors": {},
+      "bars": false,
+      "dashLength": 10,
+      "dashes": false,
+      "datasource": "prometheus",
+      "fill": 1,
+      "gridPos": {
+        "h": 9,
+        "w": 12,
+        "x": 12,
+        "y": 0
+      },
+      "id": 23,
+      "legend": {
+        "avg": false,
+        "current": false,
+        "max": false,
+        "min": false,
+        "show": true,
+        "total": false,
+        "values": false
+      },
+      "lines": true,
+      "linewidth": 1,
+      "links": [],
+      "nullPointMode": "null",
+      "percentage": false,
+      "pointradius": 5,
+      "points": false,
+      "renderer": "flot",
+      "seriesOverrides": [],
+      "spaceLength": 10,
+      "stack": false,
+      "steppedLine": false,
+      "targets": [
+        {
+          "expr": "kos_agent_worker_count",
+          "format": "time_series",
+          "intervalFactor": 1,
+          "legendFormat": "{{ node }}",
+          "refId": "A"
+        }
+      ],
+      "thresholds": [],
+      "timeFrom": null,
+      "timeRegions": [],
+      "timeShift": null,
+      "title": "Number of CA Workers",
+      "tooltip": {
+        "shared": true,
+        "sort": 0,
+        "value_type": "individual"
+      },
+      "type": "graph",
+      "xaxis": {
+        "buckets": null,
+        "mode": "time",
+        "name": null,
+        "show": true,
+        "values": []
+      },
+      "yaxes": [
+        {
+          "format": "short",
+          "label": null,
+          "logBase": 1,
+          "max": null,
+          "min": null,
+          "show": true
+        },
+        {
+          "format": "short",
+          "label": null,
+          "logBase": 1,
+          "max": null,
+          "min": null,
+          "show": true
+        }
+      ],
+      "yaxis": {
+        "align": false,
+        "alignLevel": null
+      }
+    },
+    {
+      "aliasColors": {},
+      "bars": false,
+      "dashLength": 10,
+      "dashes": false,
+      "datasource": "prometheus",
+      "fill": 1,
+      "gridPos": {
         "h": 7,
         "w": 24,
         "x": 0,
-        "y": 0
+        "y": 9
       },
       "id": 2,
       "legend": {
@@ -121,7 +291,7 @@
         "h": 7,
         "w": 24,
         "x": 0,
-        "y": 7
+        "y": 16
       },
       "id": 1,
       "legend": {
@@ -213,7 +383,7 @@
         "h": 7,
         "w": 24,
         "x": 0,
-        "y": 14
+        "y": 23
       },
       "id": 3,
       "legend": {
@@ -305,7 +475,7 @@
         "h": 7,
         "w": 24,
         "x": 0,
-        "y": 21
+        "y": 30
       },
       "id": 13,
       "legend": {
@@ -397,7 +567,7 @@
         "h": 7,
         "w": 24,
         "x": 0,
-        "y": 28
+        "y": 37
       },
       "id": 4,
       "legend": {
@@ -482,7 +652,7 @@
         "h": 7,
         "w": 24,
         "x": 0,
-        "y": 35
+        "y": 44
       },
       "id": 5,
       "legend": {
@@ -567,7 +737,7 @@
         "h": 7,
         "w": 24,
         "x": 0,
-        "y": 42
+        "y": 51
       },
       "id": 6,
       "legend": {
@@ -652,7 +822,7 @@
         "h": 7,
         "w": 24,
         "x": 0,
-        "y": 49
+        "y": 58
       },
       "id": 12,
       "legend": {
@@ -737,7 +907,7 @@
         "h": 7,
         "w": 24,
         "x": 0,
-        "y": 56
+        "y": 65
       },
       "id": 14,
       "legend": {
@@ -822,7 +992,7 @@
         "h": 7,
         "w": 24,
         "x": 0,
-        "y": 63
+        "y": 72
       },
       "id": 15,
       "legend": {
@@ -907,7 +1077,7 @@
         "h": 7,
         "w": 24,
         "x": 0,
-        "y": 70
+        "y": 79
       },
       "id": 16,
       "legend": {
@@ -992,7 +1162,7 @@
         "h": 7,
         "w": 24,
         "x": 0,
-        "y": 77
+        "y": 86
       },
       "id": 17,
       "legend": {
@@ -1077,7 +1247,7 @@
         "h": 7,
         "w": 24,
         "x": 0,
-        "y": 84
+        "y": 93
       },
       "id": 7,
       "legend": {
@@ -1169,7 +1339,7 @@
         "h": 7,
         "w": 24,
         "x": 0,
-        "y": 91
+        "y": 100
       },
       "id": 18,
       "legend": {
@@ -1254,7 +1424,7 @@
         "h": 7,
         "w": 24,
         "x": 0,
-        "y": 98
+        "y": 107
       },
       "id": 19,
       "legend": {
@@ -1337,7 +1507,7 @@
     "list": []
   },
   "time": {
-    "from": "now-30m",
+    "from": "now-1h",
     "to": "now"
   },
   "timepicker": {
@@ -1368,5 +1538,5 @@
   "timezone": "",
   "title": "KOS Internals",
   "uid": "39Dk0_Qik",
-  "version": 6
+  "version": 8
 }

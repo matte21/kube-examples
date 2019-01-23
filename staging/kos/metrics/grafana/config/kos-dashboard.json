@@ -151,7 +151,7 @@
           "format": "time_series",
           "interval": "",
           "intervalFactor": 2,
-          "legendFormat": "{{ instance }}",
+          "legendFormat": "{{ node }}",
           "refId": "A"
         }
       ],
@@ -236,7 +236,7 @@
           "expr": "histogram_quantile(0.99, rate(kos_agent_attachment_create_to_status_latency_seconds_bucket[1m]))",
           "format": "time_series",
           "intervalFactor": 2,
-          "legendFormat": "{{ instance }}",
+          "legendFormat": "{{ node }}",
           "refId": "A"
         }
       ],
@@ -661,7 +661,7 @@
           "expr": "histogram_quantile(0.99, rate(kos_agent_attachment_status_latency_seconds_bucket[1m]))",
           "format": "time_series",
           "intervalFactor": 2,
-          "legendFormat": "{{ instance }}",
+          "legendFormat": "{{ node }} {{ err }}",
           "refId": "A"
         }
       ],
@@ -669,7 +669,7 @@
       "timeFrom": null,
       "timeRegions": [],
       "timeShift": null,
-      "title": "99th Percentile Attachment Set-Ready Latency secs",
+      "title": "99th Percentile Attachment Set-Ready Latency secs, by node and error",
       "tooltip": {
         "shared": true,
         "sort": 0,
@@ -746,5 +746,5 @@
   "timezone": "",
   "title": "KOS External",
   "uid": "AlvkAlwik",
-  "version": 2
+  "version": 5
 }
