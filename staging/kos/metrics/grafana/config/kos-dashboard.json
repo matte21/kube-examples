@@ -15,7 +15,7 @@
   "editable": true,
   "gnetId": null,
   "graphTooltip": 0,
-  "id": 10,
+  "id": 12,
   "links": [],
   "panels": [
     {
@@ -318,7 +318,7 @@
       "steppedLine": false,
       "targets": [
         {
-          "expr": "histogram_quantile(0.99, rate(kos_attachment_exec_duration_secs_bucket[1m]))",
+          "expr": "histogram_quantile(0.99, rate(kos_agent_attachment_exec_duration_secs_bucket{what=\"postCreateExec\"}[1m]))",
           "format": "time_series",
           "intervalFactor": 2,
           "legendFormat": "{{ node }}",
@@ -403,7 +403,7 @@
       "steppedLine": false,
       "targets": [
         {
-          "expr": "rate(kos_attachment_exec_duration_secs_sum[1m])/rate(kos_attachment_exec_duration_secs_count[1m])",
+          "expr": "rate(kos_agent_attachment_exec_duration_secs_sum{what=\"postCreateExec\"}[1m])/rate(kos_agent_attachment_exec_duration_secs_count{what=\"postCreateExec\"}[1m])",
           "format": "time_series",
           "intervalFactor": 2,
           "legendFormat": "{{ node }}",
@@ -488,10 +488,10 @@
       "steppedLine": false,
       "targets": [
         {
-          "expr": "rate(kos_attachment_exec_rc[1m])",
+          "expr": "rate(kos_agent_attachment_exec_status_count{what=\"postCreateExec\"}[1m])",
           "format": "time_series",
           "intervalFactor": 2,
-          "legendFormat": "{{ node }} {{ RC }}",
+          "legendFormat": "{{ node }} {{ exitStatus }}",
           "refId": "A"
         }
       ],
@@ -499,7 +499,7 @@
       "timeFrom": null,
       "timeRegions": [],
       "timeShift": null,
-      "title": "Ping Tests/sec, by RC",
+      "title": "Ping Tests/sec, by Exit Status",
       "tooltip": {
         "shared": true,
         "sort": 0,
@@ -715,7 +715,7 @@
     "list": []
   },
   "time": {
-    "from": "now-15m",
+    "from": "now-1h",
     "to": "now"
   },
   "timepicker": {

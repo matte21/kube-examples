@@ -307,7 +307,11 @@ used for the following.
 - Provision data directories for Prometheus and Grafana (if you deploy
   them using the option here).
 
-- Define the CRD and cluster role for the etcd operator
+- Define the CRD and cluster role for the etcd operator.
+
+- Enable the connection agent to mount `/var/run/netns` with
+  bidirectional mount propagation while using the host network
+  namespace, which are hacks to make the ping testing work.
 
 ### Introduction to Build and Deploy
 

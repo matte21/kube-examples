@@ -60,7 +60,7 @@ const (
 	HistogramNamespace = "kos"
 	HistogramSubsystem = "driver"
 
-	rcLabel   = "RC"
+	esLabel   = "ES"
 	fullLabel = "full"
 )
 
@@ -368,7 +368,7 @@ func (slot *Slot) observeState(virtNet *VirtNet, slotIndex int, natt *netv1a1.Ne
 			cr := natt.Status.PostCreateExecReport
 			slot.testES = cr.ExitStatus
 			if cr.ExitStatus != 0 {
-				glog.Infof("Non-zero test result code: attachment=%s/%s, VNI=%06x, subnet=%s, RV=%s, node=%s, testES=%d, StartTime=%s, StopTime=%s, StdOut=%q, StdErr=%q\n", theKubeNS, slot.currentAttachmentName, virtNet.ID, natt.Spec.Subnet, natt.ResourceVersion, natt.Spec.Node, cr.ExitStatus, cr.StartTime, cr.StopTime, cr.StdOut, cr.StdErr)
+				glog.Infof("Non-zero test exit status: attachment=%s/%s, VNI=%06x, subnet=%s, RV=%s, node=%s, testES=%d, StartTime=%s, StopTime=%s, StdOut=%q, StdErr=%q\n", theKubeNS, slot.currentAttachmentName, virtNet.ID, natt.Spec.Subnet, natt.ResourceVersion, natt.Spec.Node, cr.ExitStatus, cr.StartTime, cr.StopTime, cr.StdOut, cr.StdErr)
 			}
 			if slot.testES == 0 {
 				cd.NoteTested(slotIndex)
@@ -488,7 +488,7 @@ func (slot *Slot) close(VNI uint32, nsName string) *netv1a1.NetworkAttachment {
 	if slot.testedTime != (time.Time{}) {
 		createToTestedHistogram.ObserveAt(slot.testedTime.Sub(slot.preCreateTime).Seconds(), nsName, slot.natt.Name)
 		readyToTestedHistogram.ObserveAt(slot.testedTime.Sub(slot.readyTime).Seconds(), nsName, slot.natt.Name)
-		testESs.With(prometheus.Labels{rcLabel: strconv.FormatInt(int64(slot.testES), 10), fullLabel: strconv.FormatBool(slot.fullTest)}).Add(1)
+		testESs.With(prometheus.Labels{esLabel: strconv.FormatInt(int64(slot.testES), 10), fullLabel: strconv.FormatBool(slot.fullTest)}).Add(1)
 	}
 	if slot.addressedTime == (time.Time{}) {
 		glog.Infof("Attachment got no address: attachment=%s/%s, VNI=%06x, node=%s\n", nsName, slot.currentAttachmentName, VNI, slot.currentNodeName)
@@ -883,10 +883,10 @@ func main() {
 			Namespace:   HistogramNamespace,
 			Subsystem:   HistogramSubsystem,
 			Name:        "test_count",
-			Help:        "Count of tests, by result code",
+			Help:        "Count of tests, by exit status",
 			ConstLabels: map[string]string{"runID": *runID},
 		},
-		[]string{rcLabel, fullLabel})
+		[]string{esLabel, fullLabel})
 	successfulCreates = prometheus.NewCounter(
 		prometheus.CounterOpts{
 			Namespace:   HistogramNamespace,

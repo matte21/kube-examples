@@ -28,8 +28,11 @@ import (
 
 	"github.com/golang/glog"
 
-	"k8s.io/client-go/tools/clientcmd"
+	k8scorev1 "k8s.io/api/core/v1"
+	k8smetav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	kubeclient "k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
+	"k8s.io/client-go/tools/clientcmd"
 	"k8s.io/client-go/util/workqueue"
 
 	kosclientset "k8s.io/examples/staging/kos/pkg/client/clientset/versioned"
@@ -108,10 +111,38 @@ func main() {
 	}
 	clientCfg.QPS = float32(clientQPS)
 	clientCfg.Burst = clientBurst
-	clientCfg.Host = "network-api:443"
+	clientCfg = rest.AddUserAgent(clientCfg, nodeName)
+
+	pause := time.Second
+	for {
+		kubeClientset, err := kubeclient.NewForConfig(clientCfg)
+		var svc *k8scorev1.Service
+		if err != nil {
+			glog.Errorf("Failed to create Kubernetes clientset: %s\n", err.Error())
+			goto TryAgain
+		}
+		svc, err = kubeClientset.CoreV1().Services("default").Get("kubernetes", k8smetav1.GetOptions{})
+		if err != nil {
+			glog.Errorf("Failed to fetch kubernetes service: %s\n", err.Error())
+			goto TryAgain
+		}
+		if svc.Spec.ClusterIP == "" || svc.Spec.ClusterIP == "None" {
+			glog.Errorf("The kubernetes service has a useless Cluster IP (%q).\n", svc.Spec.ClusterIP)
+			goto TryAgain
+		}
+		glog.Infof("Found Cluster IP address %q for the kubernetes service.\n", svc.Spec.ClusterIP)
+		clientCfg.Host = svc.Spec.ClusterIP + ":443"
+		break
+	TryAgain:
+		time.Sleep(pause)
+		pause = 2 * pause
+		if pause > time.Minute {
+			pause = time.Minute
+		}
+	}
+
 	// TODO: give our apiservers verifiable identities
 	clientCfg.TLSClientConfig = rest.TLSClientConfig{Insecure: true}
-	clientCfg = rest.AddUserAgent(clientCfg, nodeName)
 
 	allowedProgramsSlice := strings.Split(allowedPrograms, ",")
 	allowedProgramsSet := make(map[string]struct{})
@@ -130,14 +161,17 @@ func main() {
 
 	ca := cactlr.NewConnectionAgent(nodeName, gonet.ParseIP(hostIP), kcs, queue, workers, netFabric, allowedProgramsSet)
 
-	glog.Infof("Connection Agent start, nodeName=%s, hostIP=%s, netFabric=%s, kubeconfig=%q, workers=%d, QPS=%d, burst=%d\n",
+	glog.Infof("Connection Agent start, nodeName=%s, hostIP=%s, netFabric=%s, allowedProgramsSlice=%v, kubeconfig=%q, workers=%d, QPS=%d, burst=%d, blockProfileRate=%d, mutexProfileFraction=%d\n",
 		nodeName,
 		hostIP,
 		netFabric.Name(),
+		allowedProgramsSlice,
 		kubeconfigFilename,
 		workers,
 		clientQPS,
-		clientBurst)
+		clientBurst,
+		blockProfileRate,
+		mutexProfileFraction)
 
 	stopCh := StopOnSignals()
 	err = ca.Run(stopCh)

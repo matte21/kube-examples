@@ -157,7 +157,7 @@
           "expr": "rate(kos_ipam_controller_queue_adds[1m])",
           "format": "time_series",
           "intervalFactor": 1,
-          "legendFormat": "ipam @ {{ legend }}",
+          "legendFormat": "ipam @ {{ instance }}",
           "refId": "B"
         }
       ],
