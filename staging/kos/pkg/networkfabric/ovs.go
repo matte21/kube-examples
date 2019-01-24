@@ -19,11 +19,13 @@ import (
 	"encoding/binary"
 	"fmt"
 	"github.com/golang/glog"
+	"k8s.io/examples/staging/kos/pkg/util"
 	"net"
 	"os/exec"
 	"regexp"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -58,10 +60,12 @@ const (
 )
 
 type ovsFabric struct {
-	bridge         string
-	vtep           string
-	vtepOFport     uint16
-	flowParsingKit *regexpKit
+	bridge                string
+	vtep                  string
+	vtepOFport            uint16
+	flowParsingKit        *regexpKit
+	lockedVNIIPPairsMutex sync.Mutex
+	lockedVNIIPPairs      map[vniAndIP]struct{}
 }
 
 type regexpKit struct {
@@ -77,6 +81,11 @@ type regexpKit struct {
 	mac    *regexp.Regexp
 }
 
+type vniAndIP struct {
+	vni uint32
+	ip  uint32
+}
+
 func init() {
 	if f, err := NewOvSFabric("kos"); err != nil {
 		panic(fmt.Sprintf("failed to create OvS network fabric: %s", err.Error()))
@@ -88,7 +97,9 @@ func init() {
 // NewOvSFabric returns a network fabric for creating local and remote interfaces
 // based on Openvswitch. It creates its own OvS bridge with name bridge.
 func NewOvSFabric(bridge string) (*ovsFabric, error) {
-	f := &ovsFabric{}
+	f := &ovsFabric{
+		lockedVNIIPPairs: make(map[vniAndIP]struct{}),
+	}
 	f.initFlowsParsingKit()
 	glog.V(6).Infof("Initialized bridge %s flows parsing kit", bridge)
 	if err := f.initBridge(bridge); err != nil {
@@ -103,6 +114,17 @@ func (f *ovsFabric) Name() string {
 }
 
 func (f *ovsFabric) CreateLocalIfc(ifc LocalNetIfc) (err error) {
+	if err = f.lockVNIIPPair(ifc.VNI, ifc.GuestIP); err != nil {
+		err = fmt.Errorf("failed to lock IP %s in VNI %#x: %s", ifc.GuestIP, ifc.VNI, err.Error())
+		return
+	}
+	defer func() {
+		if err != nil {
+			f.unlockVNIIPPair(ifc.VNI, ifc.GuestIP)
+			glog.V(5).Infof("Unlocked IP %s in VNI %#x", ifc.GuestIP, ifc.VNI)
+		}
+	}()
+
 	if err = f.createIfc(ifc.Name, ifc.GuestMAC); err != nil {
 		return
 	}
@@ -136,7 +158,7 @@ func (f *ovsFabric) CreateLocalIfc(ifc LocalNetIfc) (err error) {
 		ifc,
 		f.bridge)
 
-	return nil
+	return
 }
 
 func (f *ovsFabric) DeleteLocalIfc(ifc LocalNetIfc) error {
@@ -153,6 +175,8 @@ func (f *ovsFabric) DeleteLocalIfc(ifc LocalNetIfc) error {
 		return err
 	}
 
+	f.unlockVNIIPPair(ifc.VNI, ifc.GuestIP)
+
 	glog.V(2).Infof("Deleted local interface %#+v connected to bridge %s",
 		ifc,
 		f.bridge)
@@ -160,18 +184,29 @@ func (f *ovsFabric) DeleteLocalIfc(ifc LocalNetIfc) error {
 	return nil
 }
 
-func (f *ovsFabric) CreateRemoteIfc(ifc RemoteNetIfc) error {
-	if err := f.addRemoteIfcFlows(ifc.VNI, ifc.GuestMAC, ifc.HostIP, ifc.GuestIP); err != nil {
-		return err
+func (f *ovsFabric) CreateRemoteIfc(ifc RemoteNetIfc) (err error) {
+	if err = f.lockVNIIPPair(ifc.VNI, ifc.GuestIP); err != nil {
+		err = fmt.Errorf("failed to lock IP %s in VNI %#x: %s", ifc.GuestIP, ifc.VNI, err.Error())
+		return
+	}
+	defer func() {
+		if err != nil {
+			f.unlockVNIIPPair(ifc.VNI, ifc.GuestIP)
+			glog.V(5).Infof("Unlocked IP %s in VNI %#x", ifc.GuestIP, ifc.VNI)
+		}
+	}()
+	if err = f.addRemoteIfcFlows(ifc.VNI, ifc.GuestMAC, ifc.HostIP, ifc.GuestIP); err != nil {
+		return
 	}
 	glog.V(2).Infof("Created remote interface %#+v", ifc)
-	return nil
+	return
 }
 
 func (f *ovsFabric) DeleteRemoteIfc(ifc RemoteNetIfc) error {
 	if err := f.deleteRemoteIfcFlows(ifc.VNI, ifc.GuestMAC, ifc.GuestIP); err != nil {
 		return err
 	}
+	f.unlockVNIIPPair(ifc.VNI, ifc.GuestIP)
 	glog.V(2).Infof("Deleted remote interface %#+v", ifc)
 	return nil
 }
@@ -219,11 +254,16 @@ func (f *ovsFabric) ListLocalIfcs() ([]LocalNetIfc, error) {
 		f.bridge)
 	f.deleteIncompleteIfcs(incompleteIfcs)
 
+	glog.V(4).Info("Locking local network interfaces VNIs and IPs...")
+	for _, aCompleteIfc := range completeIfcs {
+		f.lockVNIIPPair(aCompleteIfc.VNI, aCompleteIfc.GuestIP)
+	}
+
 	return completeIfcs, nil
 }
 
 func (f *ovsFabric) ListRemoteIfcs() ([]RemoteNetIfc, error) {
-	remoteFlows, err := f.getRemoteFlows()
+	flows, err := f.getRemoteFlows()
 	if err != nil {
 		return nil, err
 	}
@@ -232,10 +272,18 @@ func (f *ovsFabric) ListRemoteIfcs() ([]RemoteNetIfc, error) {
 	// by interface.
 	glog.V(4).Infof("Pairing ARP and normal Datalink traffic flows of remote interfaces in bridge %s...",
 		f.bridge)
-	perIfcFlowPairs := f.pairRemoteFlowsPerIfc(remoteFlows)
+	perIfcFlowPairs := f.pairRemoteFlowsPerIfc(flows)
 	glog.V(4).Infof("Parsing flows pairs found in bridge %s into remote Network Interfaces...",
 		f.bridge)
-	return f.parseRemoteFlowsPairs(perIfcFlowPairs), nil
+
+	ifcs := f.parseRemoteFlowsPairs(perIfcFlowPairs)
+
+	glog.V(4).Info("Locking remote network interfaces VNIs and IPs...")
+	for _, anIfc := range ifcs {
+		f.lockVNIIPPair(anIfc.VNI, anIfc.GuestIP)
+	}
+
+	return ifcs, nil
 }
 
 func (f *ovsFabric) initFlowsParsingKit() {
@@ -917,6 +965,39 @@ func (f *ovsFabric) newListOFportsAndIfcNamesCmd() *exec.Cmd {
 		"--columns=ofport,name",
 		"list",
 		"Interface")
+}
+
+func (f *ovsFabric) lockVNIIPPair(vni uint32, ip net.IP) (err error) {
+	vniIP := vniAndIP{
+		vni: vni,
+		ip:  util.MakeUint32FromIPv4(ip),
+	}
+	f.lockedVNIIPPairsMutex.Lock()
+	defer func() {
+		f.lockedVNIIPPairsMutex.Unlock()
+		if err == nil {
+			glog.V(5).Infof("Locked IP %s in VNI %#x", ip, vni)
+		}
+	}()
+	if _, pairAlreadyLocked := f.lockedVNIIPPairs[vniIP]; pairAlreadyLocked {
+		err = fmt.Errorf("there's already an interface in VNI %#x with IP %d", vni, ip)
+		return
+	}
+	f.lockedVNIIPPairs[vniIP] = struct{}{}
+	return
+}
+
+func (f *ovsFabric) unlockVNIIPPair(vni uint32, ip net.IP) {
+	vniIP := vniAndIP{
+		vni: vni,
+		ip:  util.MakeUint32FromIPv4(ip),
+	}
+	f.lockedVNIIPPairsMutex.Lock()
+	defer func() {
+		f.lockedVNIIPPairsMutex.Unlock()
+		glog.V(5).Infof("Unlocked IP %s in VNI %#x", ip, vni)
+	}()
+	delete(f.lockedVNIIPPairs, vniIP)
 }
 
 type addFlowsErr struct {
