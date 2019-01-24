@@ -368,7 +368,7 @@ func (slot *Slot) observeState(virtNet *VirtNet, slotIndex int, natt *netv1a1.Ne
 			cr := natt.Status.PostCreateExecReport
 			slot.testES = cr.ExitStatus
 			if cr.ExitStatus != 0 {
-				glog.Infof("Non-zero test exit status: attachment=%s/%s, VNI=%06x, subnet=%s, RV=%s, node=%s, testES=%d, StartTime=%s, StopTime=%s, StdOut=%q, StdErr=%q\n", theKubeNS, slot.currentAttachmentName, virtNet.ID, natt.Spec.Subnet, natt.ResourceVersion, natt.Spec.Node, cr.ExitStatus, cr.StartTime, cr.StopTime, cr.StdOut, cr.StdErr)
+				glog.Infof("Non-zero test exit status: attachment=%s/%s, VNI=%06x, subnet=%s, RV=%s, node=%s, IPv4=%s, MAC=%s, testES=%d, StartTime=%s, StopTime=%s, StdOut=%q, StdErr=%q\n", theKubeNS, slot.currentAttachmentName, virtNet.ID, natt.Spec.Subnet, natt.ResourceVersion, natt.Spec.Node, natt.Status.IPv4, natt.Status.MACAddress, cr.ExitStatus, cr.StartTime, cr.StopTime, cr.StdOut, cr.StdErr)
 			}
 			if slot.testES == 0 {
 				cd.NoteTested(slotIndex)
@@ -378,7 +378,7 @@ func (slot *Slot) observeState(virtNet *VirtNet, slotIndex int, natt *netv1a1.Ne
 					atomic.AddUint32(&stoppers, 1)
 				}
 			}
-			glog.Infof("Attachment was tested: attachment=%s/%s, VNI=%06x, subnet=%s, RV=%s, node=%s, preCreateTime=%s, postCreateTime=%s, addressedTime=%s, readyTime=%s, testedTime=%s, fullTest=%v, testES=%d, ipv4=%s\n", theKubeNS, slot.currentAttachmentName, virtNet.ID, natt.Spec.Subnet, natt.ResourceVersion, natt.Spec.Node, slot.preCreateTime.Format(kosutil.RFC3339Milli), slot.postCreateTime.Format(kosutil.RFC3339Milli), slot.addressedTime.Format(kosutil.RFC3339Milli), slot.readyTime.Format(kosutil.RFC3339Milli), slot.testedTime.Format(kosutil.RFC3339Milli), slot.fullTest, slot.testES, natt.Status.IPv4)
+			glog.Infof("Attachment was tested: attachment=%s/%s, VNI=%06x, subnet=%s, RV=%s, node=%s, IPv4=%s, MAC=%s, preCreateTime=%s, postCreateTime=%s, addressedTime=%s, readyTime=%s, testedTime=%s, fullTest=%v, testES=%d, ipv4=%s\n", theKubeNS, slot.currentAttachmentName, virtNet.ID, natt.Spec.Subnet, natt.ResourceVersion, natt.Spec.Node, natt.Status.IPv4, natt.Status.MACAddress, slot.preCreateTime.Format(kosutil.RFC3339Milli), slot.postCreateTime.Format(kosutil.RFC3339Milli), slot.addressedTime.Format(kosutil.RFC3339Milli), slot.readyTime.Format(kosutil.RFC3339Milli), slot.testedTime.Format(kosutil.RFC3339Milli), slot.fullTest, slot.testES, natt.Status.IPv4)
 		}
 	} else if len(natt.Status.Errors.IPAM) > 0 || len(natt.Status.Errors.Host) > 0 {
 		if slot.brokenTime == (time.Time{}) {
@@ -563,7 +563,7 @@ func (eeh *attachmentEventHandler) OnUpdate(oldObj, newObj interface{}) {
 
 func (eeh *attachmentEventHandler) OnDelete(obj interface{}) {
 	natt := obj.(*netv1a1.NetworkAttachment)
-	glog.Infof("Notified of attachment deletion: attachment=%s/%s, subnet=%s, RV=%s, node=%s, addressVNI=%06x, ipv4=%s, ifcName=%q\n", natt.Namespace, natt.Name, natt.Spec.Subnet, natt.ResourceVersion, natt.Spec.Node, natt.Status.AddressVNI, natt.Status.IPv4, natt.Status.IfcName)
+	glog.Infof("Notified of attachment deletion: attachment=%s/%s, subnet=%s, RV=%s, node=%s, addressVNI=%06x, ipv4=%s, ifcName=%q, mac=%q\n", natt.Namespace, natt.Name, natt.Spec.Subnet, natt.ResourceVersion, natt.Spec.Node, natt.Status.AddressVNI, natt.Status.IPv4, natt.Status.IfcName, natt.Status.MACAddress)
 }
 
 func waitForInitializedSubnets() {
