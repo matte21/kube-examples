@@ -304,8 +304,8 @@ run privileged containers there and an adequate version of OVS can be
 installed or found on each worker node.  Privileged containers are
 used for the following.
 
-- Provision data directories for Prometheus and Grafana (if you deploy
-  them using the option here).
+- Provision data directories for Prometheus (if you deploy
+  it using the option here).
 
 - Define the CRD and cluster role for the etcd operator.
 
@@ -352,12 +352,12 @@ Ome way to deploy them is to issue the following commands, with `kos`
 as your current working directory.
 
 ```
-kubectl apply -f metrics/prometheus/manifests
-kubectl create -f metrices/grafana/manifests
+kubectl apply  -f metrics/prometheus/manifests
+kubectl create -f metrics/grafana/manifests
 ```
 
 The reason that `kubectl apply` is not used for Grafana is that the
-configmap is too big.
+configmap containing the dashboard definitions is too big.
 
 This also creates a NodePort Service for the Prometheus server on node
 port 30909, which means you can access the Prometheus server at
@@ -371,9 +371,9 @@ invoke `metrics/prometheus/sync-configmap.sh` to update the configmap
 template.
 
 The sources for the Grafana dashboards are in
-`metrics/grafana/config`.  If you edit them (by hand or in Grafana)
-then invoke `metrics/grafana/sync-configmap.sh` to copy them into the
-configmap template.
+`metrics/grafana/{data*,dash*}`.  If you edit them (by hand or in
+Grafana) then invoke `metrics/grafana/sync-configmaps.sh` to copy them
+into the corresponding configmap templates.
 
 ### Build
 
