@@ -22,7 +22,7 @@ data:
       "editable": true,
       "gnetId": 3070,
       "graphTooltip": 0,
-      "id": 1,
+      "id": 9,
       "links": [],
       "panels": [
         {
@@ -1134,7 +1134,7 @@ data:
             "current": false,
             "max": false,
             "min": false,
-            "show": false,
+            "show": true,
             "total": false,
             "values": false
           },
@@ -1152,26 +1152,26 @@ data:
           "steppedLine": false,
           "targets": [
             {
-              "expr": "sum(rate(etcd_server_proposals_failed_total{job!=\"kubernetes-etcd\"}[5m]))",
+              "expr": "rate(etcd_server_proposals_failed_total{job!=\"kubernetes-etcd\"}[5m])",
               "format": "time_series",
               "intervalFactor": 2,
-              "legendFormat": "failed",
+              "legendFormat": "failed @ {{ instance }}",
               "metric": "etcd_server_proposals_failed_total",
               "refId": "A",
               "step": 60
             },
             {
-              "expr": "sum(rate(etcd_server_proposals_committed_total{job!=\"kubernetes-etcd\"}[5m]))",
+              "expr": "rate(etcd_server_proposals_committed_total{job!=\"kubernetes-etcd\"}[5m])",
               "format": "time_series",
               "intervalFactor": 1,
-              "legendFormat": "committed",
+              "legendFormat": "committed @ {{ instance }}",
               "refId": "B"
             },
             {
-              "expr": "sum(rate(etcd_server_proposals_applied_total{job!=\"kubernetes-etcd\"}[5m]))",
+              "expr": "rate(etcd_server_proposals_applied_total{job!=\"kubernetes-etcd\"}[5m])",
               "format": "time_series",
               "intervalFactor": 1,
-              "legendFormat": "applied",
+              "legendFormat": "applied @ {{ instance }}",
               "refId": "C"
             }
           ],
@@ -1537,10 +1537,10 @@ data:
           "steppedLine": false,
           "targets": [
             {
-              "expr": "sum(rate(container_cpu_usage_seconds_total{name=~\".*etcd.*\",name!~\".*etcd-operator.*\"}[1m])) by (instance)",
+              "expr": "sum(rate(container_cpu_usage_seconds_total{name=~\".*etcd.*\",name!~\".*etcd-operator.*\"}[1m])) by (pod_name)",
               "format": "time_series",
               "intervalFactor": 2,
-              "legendFormat": "{{ instance }}",
+              "legendFormat": "{{ pod_name }}",
               "refId": "A"
             }
           ],
@@ -2063,6 +2063,7 @@ data:
           }
         }
       ],
+      "refresh": false,
       "schemaVersion": 16,
       "style": "dark",
       "tags": [],
@@ -2101,7 +2102,7 @@ data:
       "timezone": "utc",
       "title": "Non-Kubernetes Etcd by Prometheus",
       "uid": "jsBg9ywiz",
-      "version": 7
+      "version": 2
     }
   kos-externals.json: |
     {
