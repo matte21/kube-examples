@@ -1,12 +1,5 @@
 {
-  "__inputs": [{
-    "name": "DS_PROMETHEUS",
-    "label": "prometheus",
-    "description": "",
-    "type": "datasource",
-    "pluginId": "prometheus",
-    "pluginName": "Prometheus"
-  }],
+  "__inputs": [],
   "__requires": [{
     "type": "panel",
     "id": "singlestat",
@@ -52,7 +45,7 @@
         "rgba(237, 129, 40, 0.89)",
         "rgba(245, 54, 54, 0.9)"
       ],
-      "datasource": "${DS_PROMETHEUS}",
+      "datasource": "prometheus",
       "editable": true,
       "error": false,
       "format": "percent",
@@ -125,7 +118,7 @@
         "rgba(237, 129, 40, 0.89)",
         "rgba(245, 54, 54, 0.9)"
       ],
-      "datasource": "${DS_PROMETHEUS}",
+      "datasource": "prometheus",
       "decimals": 2,
       "editable": true,
       "error": false,
@@ -197,7 +190,7 @@
         "rgba(237, 129, 40, 0.89)",
         "rgba(245, 54, 54, 0.9)"
       ],
-      "datasource": "${DS_PROMETHEUS}",
+      "datasource": "prometheus",
       "decimals": 2,
       "editable": true,
       "error": false,
@@ -271,7 +264,7 @@
         "rgba(237, 129, 40, 0.89)",
         "rgba(245, 54, 54, 0.9)"
       ],
-      "datasource": "${DS_PROMETHEUS}",
+      "datasource": "prometheus",
       "decimals": 2,
       "editable": true,
       "error": false,
@@ -343,7 +336,7 @@
         "rgba(237, 129, 40, 0.89)",
         "rgba(245, 54, 54, 0.9)"
       ],
-      "datasource": "${DS_PROMETHEUS}",
+      "datasource": "prometheus",
       "decimals": 2,
       "editable": true,
       "error": false,
@@ -415,7 +408,7 @@
         "rgba(237, 129, 40, 0.89)",
         "rgba(245, 54, 54, 0.9)"
       ],
-      "datasource": "${DS_PROMETHEUS}",
+      "datasource": "prometheus",
       "decimals": 2,
       "editable": true,
       "error": false,
@@ -488,7 +481,7 @@
         "rgba(237, 129, 40, 0.89)",
         "rgba(245, 54, 54, 0.9)"
       ],
-      "datasource": "${DS_PROMETHEUS}",
+      "datasource": "prometheus",
       "decimals": 2,
       "editable": true,
       "error": false,
@@ -560,7 +553,7 @@
         "rgba(237, 129, 40, 0.89)",
         "rgba(245, 54, 54, 0.9)"
       ],
-      "datasource": "${DS_PROMETHEUS}",
+      "datasource": "prometheus",
       "decimals": 2,
       "editable": true,
       "error": false,
@@ -632,7 +625,7 @@
         "rgba(237, 129, 40, 0.89)",
         "rgba(245, 54, 54, 0.9)"
       ],
-      "datasource": "${DS_PROMETHEUS}",
+      "datasource": "prometheus",
       "decimals": 2,
       "editable": true,
       "error": false,
@@ -698,7 +691,7 @@
     }, {
       "aliasColors": {},
       "bars": false,
-      "datasource": "${DS_PROMETHEUS}",
+      "datasource": "prometheus",
       "decimals": 2,
       "editable": true,
       "error": false,
@@ -795,7 +788,7 @@
     "panels": [{
       "aliasColors": {},
       "bars": false,
-      "datasource": "${DS_PROMETHEUS}",
+      "datasource": "prometheus",
       "decimals": 3,
       "editable": true,
       "error": false,
@@ -878,7 +871,7 @@
     }, {
       "aliasColors": {},
       "bars": false,
-      "datasource": "${DS_PROMETHEUS}",
+      "datasource": "prometheus",
       "decimals": 2,
       "editable": true,
       "error": false,
@@ -959,7 +952,7 @@
     }, {
       "aliasColors": {},
       "bars": false,
-      "datasource": "${DS_PROMETHEUS}",
+      "datasource": "prometheus",
       "decimals": 2,
       "editable": true,
       "error": false,
@@ -1048,7 +1041,7 @@
     }, {
       "aliasColors": {},
       "bars": false,
-      "datasource": "${DS_PROMETHEUS}",
+      "datasource": "prometheus",
       "decimals": 2,
       "editable": true,
       "error": false,
@@ -1163,7 +1156,7 @@
     "list": [{
       "allValue": ".*",
       "current": {},
-      "datasource": "${DS_PROMETHEUS}",
+      "datasource": "prometheus",
       "hide": 0,
       "includeAll": true,
       "label": "Instance",
@@ -1176,7 +1169,7 @@
       "type": "query"
     }, {
       "current": {},
-      "datasource": "${DS_PROMETHEUS}",
+      "datasource": "prometheus",
       "hide": 0,
       "includeAll": true,
       "label": "Namespace",

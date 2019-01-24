@@ -14,17 +14,6 @@ spec:
       labels:
         app: grafana
     spec:
-      initContainers:
-      - name: dataprep
-        image: giantswarm/tiny-tools
-        command: ["/bin/sh", "-c"]
-        args:
-        - mkdir -p /var/lib/grafana && chown 472 /var/lib/grafana && chmod 0755 /var/lib/grafana
-        securityContext:
-          privileged: true
-        volumeMounts:
-        - name: var-lib
-          mountPath: /var/lib
       containers:
       - image: grafana/grafana:5.4.3
         name: grafana
@@ -35,9 +24,19 @@ spec:
           - name: GF_AUTH_ANONYMOUS_ENABLED
             value: "false"
         volumeMounts:
-        - name: var-lib
-          mountPath: /var/lib
+        - name: datasources
+          mountPath: /etc/grafana/provisioning/datasources
+        - name: dashboard-providers
+          mountPath: /etc/grafana/provisioning/dashboards
+        - name: dashboard-defs
+          mountPath: /etc/grafana/provisioning/dashboard-defs
       volumes:
-      - name: var-lib
-        hostPath:
-          path: /var/lib
+      - name: datasources
+        configMap:
+          name: grafana-datasources
+      - name: dashboard-providers
+        configMap:
+          name: grafana-dashboard-providers
+      - name: dashboard-defs
+        configMap:
+          name: grafana-dashboard-defs
