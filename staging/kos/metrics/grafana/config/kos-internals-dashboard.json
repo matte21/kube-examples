@@ -763,7 +763,7 @@
       "steppedLine": false,
       "targets": [
         {
-          "expr": "histogram_quantile(0.99, rate(kos_agent_fabric_latency_seconds_bucket{op=~\"Create.*Ifc\"}[1m]))",
+          "expr": "histogram_quantile(0.99, rate(kos_agent_fabric_latency_seconds_bucket{op=~\"Create.*Ifc\",err!=\"true\"}[1m]))",
           "format": "time_series",
           "intervalFactor": 2,
           "legendFormat": "{{ op }}@{{ node }}",
@@ -774,7 +774,7 @@
       "timeFrom": null,
       "timeRegions": [],
       "timeShift": null,
-      "title": "99th Percentile Fabric Create*Port Latency",
+      "title": "99th Percentile Successful Fabric Create*Port Latency",
       "tooltip": {
         "shared": true,
         "sort": 0,
@@ -851,7 +851,7 @@
           "expr": "histogram_quantile(0.90, rate(kos_agent_fabric_latency_seconds_bucket{op=~\"Create.*Ifc\"}[1m]))",
           "format": "time_series",
           "intervalFactor": 2,
-          "legendFormat": "{{ op }}@{{ node }}",
+          "legendFormat": "{{ op }}@{{ node }} {{ err }}",
           "refId": "A"
         }
       ],
@@ -936,7 +936,7 @@
           "expr": "rate(kos_agent_fabric_latency_seconds_sum{op=\"CreateLocalIfc\"}[1m])/rate(kos_agent_fabric_latency_seconds_count{op=\"CreateLocalIfc\"}[1m])",
           "format": "time_series",
           "intervalFactor": 2,
-          "legendFormat": "{{ node }}",
+          "legendFormat": "{{ node }} {{ err }}",
           "refId": "A"
         }
       ],
@@ -1021,7 +1021,7 @@
           "expr": "rate(kos_agent_fabric_latency_seconds_sum{op=\"CreateRemoteIfc\"}[1m])/rate(kos_agent_fabric_latency_seconds_count{op=\"CreateRemoteIfc\"}[1m])",
           "format": "time_series",
           "intervalFactor": 2,
-          "legendFormat": "{{ node }}",
+          "legendFormat": "{{ node }} {{ err }}",
           "refId": "A"
         }
       ],
@@ -1106,7 +1106,7 @@
           "expr": "rate(kos_agent_fabric_latency_seconds_sum{op=\"DeleteLocalIfc\"}[1m])/rate(kos_agent_fabric_latency_seconds_count{op=\"DeleteLocalIfc\"}[1m])",
           "format": "time_series",
           "intervalFactor": 2,
-          "legendFormat": "{{ node }}",
+          "legendFormat": "{{ node }} {{ err }}",
           "refId": "A"
         }
       ],
@@ -1191,7 +1191,7 @@
           "expr": "rate(kos_agent_fabric_latency_seconds_sum{op=\"DeleteRemoteIfc\"}[1m])/rate(kos_agent_fabric_latency_seconds_count{op=\"DeleteRemoteIfc\"}[1m])",
           "format": "time_series",
           "intervalFactor": 2,
-          "legendFormat": "{{ node }}",
+          "legendFormat": "{{ node }} {{ err }}",
           "refId": "A"
         }
       ],
@@ -1538,5 +1538,5 @@
   "timezone": "",
   "title": "KOS Internals",
   "uid": "39Dk0_Qik",
-  "version": 8
+  "version": 10
 }

@@ -17,7 +17,6 @@ limitations under the License.
 package connectionagent
 
 import (
-	"encoding/json"
 	"fmt"
 	"os/exec"
 	"strconv"
@@ -66,10 +65,10 @@ func (c *ConnectionAgent) LaunchCommand(attNSN k8stypes.NamespacedName, localIfc
 		}
 	}
 	if cr != nil {
-		glog.V(4).Infof("Invalid attachment command spec: vni=%06x, att=%s, what=%s, cmd=%#v, error=%q\n", localIfc.VNI, attNSN, cmd, what, cr.StdErr)
+		glog.V(4).Infof("Invalid attachment command spec: att=%s, vni=%06x, ipv4=%s, ifcName=%s, mac=%s, what=%s, cmd=%#v, error=%q\n", attNSN, localIfc.VNI, localIfc.GuestIP, localIfc.Name, localIfc.GuestMAC, what, cmd, cr.StdErr)
 		return cr
 	}
-	glog.V(4).Infof("Will launch attachment command: vni=%06x, att=%s, what=%s, cmd=%#v\n", localIfc.VNI, attNSN, what, cmd)
+	glog.V(4).Infof("Will launch attachment command: att=%s, vni=%06x, ipv4=%s, ifcName=%s, mac=%s, what=%s, cmd=%#v\n", attNSN, localIfc.VNI, localIfc.GuestIP, localIfc.Name, localIfc.GuestMAC, what, cmd)
 	go func() { c.RunCommand(attNSN, localIfc, cmd, what, saveReport) }()
 	return nil
 }
@@ -115,31 +114,10 @@ func (c *ConnectionAgent) RunCommand(attNSN k8stypes.NamespacedName, localIfc *n
 	}
 	c.attachmentExecDurationHistograms.With(prometheus.Labels{"what": what}).Observe(stopTime.Sub(startTime).Seconds())
 	c.attachmentExecStatusCounts.With(prometheus.Labels{"what": what, "exitStatus": strconv.FormatInt(int64(cr.ExitStatus), 10)}).Add(1)
-	glog.V(4).Infof("Exec report: vni=%06x, att=%s, what=%s, report=%#+v\n", localIfc.VNI, attNSN, what, cr)
+	glog.V(4).Infof("Exec report: att=%s, vni=%06x, ipv4=%s, ifcName=%s, mac=%s, what=%s, report=%#+v\n", attNSN, localIfc.VNI, localIfc.GuestIP, localIfc.Name, localIfc.GuestMAC, what, cr)
 	if !saveReport {
 		return
 	}
 	c.setExecReport(attNSN, &cr)
 	c.queue.Add(attNSN)
-	if true {
-		return
-	}
-	patchObj := ExecReportPatchObj{
-		netv1a1.NetworkAttachmentStatus{PostCreateExecReport: &cr}}
-	patchBytes, err := json.Marshal(patchObj)
-	if err != nil {
-		glog.Errorf("Failed to marshal %#+v: %s\n", cr, err.Error())
-		return
-	}
-	glog.V(5).Infof("Patch for %#+v is %q\n", cr, string(patchBytes))
-	ne2, err := c.kcs.NetworkV1alpha1().NetworkAttachments(attNSN.Namespace).Patch(attNSN.Name, k8stypes.StrategicMergePatchType, patchBytes)
-	if err != nil {
-		glog.Warningf("patch attachment command result failed: vni=%06x, att=%s, what=%s, exitStatus=%d, err=%s\n", localIfc.VNI, attNSN, what, cr.ExitStatus, err.Error())
-	} else {
-		glog.V(4).Infof("patch attachment command result succeeded: vni=%06x, att=%s, what=%s, exitStatus=%d, newResourceVersion=%s\n", localIfc.VNI, attNSN, what, cr.ExitStatus, ne2.ResourceVersion)
-	}
-}
-
-type ExecReportPatchObj struct {
-	Status netv1a1.NetworkAttachmentStatus `json:"status"`
 }

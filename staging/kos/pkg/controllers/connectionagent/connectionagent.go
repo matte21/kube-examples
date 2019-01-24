@@ -777,24 +777,22 @@ func (ca *ConnectionAgent) processExistingAtt(att *netv1a1.NetworkAttachment) er
 		!pcer.Equiv(att.Status.PostCreateExecReport) {
 
 		glog.V(5).Infof("Attempting update of %s from resourceVersion=%s because host IP %q != %q or ifcName %q != %q or MAC address %q != %q or PCER %#+v != %#+v\n", attNSN, att.ResourceVersion, localHostIPStr, att.Status.HostIP, ifcName, att.Status.IfcName, macAddrS, att.Status.MACAddress, pcer, att.Status.PostCreateExecReport)
-		if pcer != nil && att.Status.PostCreateExecReport != nil {
-			glog.V(5).Infof("For attachment %s: PCER StartTimes are %s and %s, difference=%d, StopTimes are %s and %s, difference=%d\n", attNSN, pcer.StartTime.Time, att.Status.PostCreateExecReport.StartTime.Time, pcer.StartTime.Time.Sub(att.Status.PostCreateExecReport.StartTime.Time), pcer.StopTime.Time, att.Status.PostCreateExecReport.StopTime.Time, pcer.StopTime.Time.Sub(att.Status.PostCreateExecReport.StopTime.Time))
-		}
-
 		updatedAtt, err := ca.setAttStatus(att, macAddrS, ifcName, pcer)
 		if err != nil {
-			glog.V(3).Infof("Failed to update att %s status: oldRV=%s,  macAddress=%s, ifcName=%s, PostCreateExecReport=%#+v\n",
+			glog.V(3).Infof("Failed to update att %s status: oldRV=%s, ipv4=%s, macAddress=%s, ifcName=%s, PostCreateExecReport=%#+v\n",
 				attNSN,
 				att.ResourceVersion,
+				att.Status.IPv4,
 				macAddrS,
 				ifcName,
 				pcer)
 			return err
 		}
-		glog.V(3).Infof("Updated att %s status: oldRV=%s, newRV=%s, hostIP=%s, macAddress=%s, ifcName=%s, PostCreateExecReport=%#+v\n",
+		glog.V(3).Infof("Updated att %s status: oldRV=%s, newRV=%s, ipv4=%s, hostIP=%s, macAddress=%s, ifcName=%s, PostCreateExecReport=%#+v\n",
 			attNSN,
 			att.ResourceVersion,
 			updatedAtt.ResourceVersion,
+			updatedAtt.Status.IPv4,
 			updatedAtt.Status.HostIP,
 			updatedAtt.Status.MACAddress,
 			updatedAtt.Status.IfcName,
