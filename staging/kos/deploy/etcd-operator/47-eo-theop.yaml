@@ -9,10 +9,15 @@ spec:
     metadata:
       labels:
         name: etcd-operator
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "8080"
     spec:
       securityContext:
         runAsUser: 1000
         fsGroup: 1000
+      nodeSelector:
+        role.kos.example.com/control: "true"
       containers:
       - name: etcd-operator
         image: quay.io/coreos/etcd-operator:v0.9.3

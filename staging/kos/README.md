@@ -11,9 +11,9 @@ The data plane is based on OVS.  Each node has an independent OVS
 installation.  The kube-based control plane distributes the needed
 information to each node.
 
-This SDN produces Prometheus metrics.  This example includes manifests
-for deploying Prometheus and Grafana in a way that will scrape and
-display metrics from the cluster, including the SDN.
+This SDN produces Prometheus metrics.  This example includes example
+manifests for deploying Prometheus and Grafana in a way that will
+scrape and display metrics from the cluster, including the SDN.
 
 
 ## Status
@@ -295,9 +295,7 @@ See [cmd/attachment-tput-driver](cmd/attachment-tput-driver) for a
 test driver.
 
 
-## Operations Guide
-
-### Where KOS Can Be Deployed
+## The Kubernetes Cluster
 
 KOS can be run on any standard Kubernetes cluster, provided you can
 run privileged containers there and an adequate version of OVS can be
@@ -312,6 +310,16 @@ used for the following.
 - Enable the connection agent to mount `/var/run/netns` with
   bidirectional mount propagation while using the host network
   namespace, which are hacks to make the ping testing work.
+
+KOS will use two subsets of the cluster, one for the KOS control plane
+and one for KOS workload.  These subsets may be disjoint or overlap,
+as appropriate for the cluster at hand.  These subsets are identified
+by node labels.  The KOS control plane nodes are identified by the
+node label `role.kos.example.com/control=true`, and the workload nodes
+are identified by `role.kos.example.com/workload=true`.
+
+
+## Operations Guide
 
 ### Introduction to Build and Deploy
 
@@ -345,6 +353,8 @@ following.
 
 - OVS (the `openvswitch-switch` package), release 2.2 or later
 
+Before deploying KOS, the Kubernetes nodes must havce the labels
+discussed above to identify which KOS subset(s) each node belongs to.
 
 ### Prometheus and Grafana
 
@@ -374,6 +384,31 @@ The sources for the Grafana dashboards are in
 `metrics/grafana/{data*,dash*}`.  If you edit them (by hand or in
 Grafana) then invoke `metrics/grafana/sync-configmaps.sh` to copy them
 into the corresponding configmap templates.
+
+The Prometheus configuration is based on
+https://github.com/prometheus/prometheus/blob/63fe65bf2ff8c480bb4350e4d278d3208ca687be/documentation/examples/prometheus-kubernetes.yml
+and has the following notable modifications.
+
+- There is an additiona Prometheus job, `kubernetes-nodes-cadvisor`,
+  that will scrape port 4194 on nodes labelled
+  `prometheus.io/scrape=true`.
+
+- The `kubernetes-pods` job will scrape a pod if _either_
+
+  - the pod is annotated `prometheus.io/scrape=true`, or
+  - the pod is annotated `prometheus.io/sample=true` and the pod's
+    node's entire name matches the regex
+    `[0-9.]*|.*comp[0-9]*0|.*ctrl[0-9]*`.
+
+- The `kubernetes-service-endpoints` job will scrape an endpoint if it
+  is backed by a service and _either_
+
+  - the service is annotated with `prometheus.io/scrape=true`, or
+  - the service is annotated with `prometheus.io/sample=true` and the
+    endpoint is based on a pod whose node's entire name matches the
+    regex `[0-9.]*|.*comp[0-9]*0|.*ctrl[0-9]*`.
+
+The connection agent gets annotated with `prometheus.io/sample=true`.
 
 ### Build
 

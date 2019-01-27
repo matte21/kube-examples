@@ -17,6 +17,8 @@ spec:
         prometheus.io/port: "9295"
     spec:
       serviceAccountName: ipam-controller
+      nodeSelector:
+        role.kos.example.com/control: "true"
       containers:
       - name: ipam-controller
         image: DOCKER_PREFIX/kos-ipam-controller:latest
