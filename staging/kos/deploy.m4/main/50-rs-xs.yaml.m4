@@ -14,6 +14,8 @@ spec:
         network-apiserver: "true"
     spec:
       serviceAccountName: network-apiserver
+      nodeSelector:
+        role.kos.example.com/control: "true"
       containers:
       - name: apiserver
         image: DOCKER_PREFIX/kos-network-apiserver:latest

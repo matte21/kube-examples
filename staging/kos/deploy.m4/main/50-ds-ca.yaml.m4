@@ -12,10 +12,12 @@ spec:
       labels:
         connection-agent: "true"
       annotations:
-        prometheus.io/scrape: "true"
+        prometheus.io/sample: "true"
         prometheus.io/port: "9294"
     spec:
       serviceAccountName: connection-agent
+      nodeSelector:
+        role.kos.example.com/workload: "true"
       hostNetwork: true
       containers:
       - name: connection-agent

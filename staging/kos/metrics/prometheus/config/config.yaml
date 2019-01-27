@@ -46,12 +46,15 @@ scrape_configs:
     ca_file: /var/run/secrets/kubernetes.io/serviceaccount/ca.crt
   bearer_token_file: /var/run/secrets/kubernetes.io/serviceaccount/token
   kubernetes_sd_configs:
-    - role: node
+  - role: node
   relabel_configs:
-    - source_labels: [__address__]
-      regex: '(.*):10250'
-      replacement: '${1}:4194'
-      target_label: __address__
+  - source_labels: [__address__]
+    regex: '(.*):10250'
+    replacement: '${1}:4194'
+    target_label: __address__
+  - source_labels: [__meta_kubernetes_node_annotation_prometheus_io_scrape]
+    action: keep
+    regex: true
 
 
 
@@ -78,9 +81,9 @@ scrape_configs:
   bearer_token_file: /var/run/secrets/kubernetes.io/serviceaccount/token
 
   relabel_configs:
-  - source_labels: [__meta_kubernetes_service_annotation_prometheus_io_scrape]
+  - source_labels: [__meta_kubernetes_service_annotation_prometheus_io_scrape, __meta_kubernetes_service_annotation_prometheus_io_sample, __meta_kubernetes_pod_node_name]
     action: keep
-    regex: true
+    regex: true;.*|.*;true;([0-9.]*|.*comp[0-9]*0|.*ctrl[0-9]*)
   - source_labels: [__meta_kubernetes_service_annotation_prometheus_io_scheme]
     action: replace
     target_label: __scheme__
@@ -117,9 +120,9 @@ scrape_configs:
   - role: pod
 
   relabel_configs:
-  - source_labels: [__meta_kubernetes_pod_annotation_prometheus_io_scrape]
+  - source_labels: [__meta_kubernetes_pod_annotation_prometheus_io_scrape, __meta_kubernetes_pod_annotation_prometheus_io_sample, __meta_kubernetes_pod_node_name]
     action: keep
-    regex: true
+    regex: true;.*|.*;true;([0-9.]*|.*comp[0-9]*0|.*ctrl[0-9]*)
   - source_labels: [__meta_kubernetes_pod_annotation_prometheus_io_path]
     action: replace
     target_label: __metrics_path__
