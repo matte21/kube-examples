@@ -20,7 +20,18 @@ spec:
       - name: apiserver
         image: DOCKER_PREFIX/kos-network-apiserver:latest
         imagePullPolicy: Always
+        volumeMounts:
+        - name: etcd-certs
+          mountPath: /etcd-certs
+          readOnly: true
         command:
         - /network-apiserver
-        - --etcd-servers=http://the-etcd-cluster-client:2379
+        - --etcd-servers=https://the-etcd-cluster-client:2379
+        - --etcd-certfile=/etcd-certs/etcd-client.crt
+        - --etcd-keyfile=/etcd-certs/etcd-client.key
+        - --etcd-cafile=/etcd-certs/etcd-client-ca.crt
         - -v=5
+      volumes:
+      - name: etcd-certs
+        secret:
+          secretName: etcd-client

@@ -42,7 +42,9 @@ This example adds the following to the Kubernetes cluster.
 
 - An etcd cluster managed by the etcd Operator.  The cluster initially
   has three members and that number can be adjusted in the usual way
-  for the Operator.  The etcd cluster is _not_ yet secured.
+  for the Operator.  The etcd cluster is secured with TLS certs and
+  keys that [the Makefile](Makefile) keeps on the filesystem of the
+  build/ops machine.
 
 - An API extension server Deployment.  The deployment initially has
   two members and the number can be adjusted in the usual ways.  These
@@ -345,6 +347,8 @@ You will need the following installed on your build/ops machine.
 
 - m4
 
+- openssl, any non-embarrassing version
+
 With `kos` as your current working directory, `glide install` to
 populate the `kos/vendor` directory.
 
@@ -443,6 +447,11 @@ then this step references the `DOCKER_PREFIX` variable with the usual
 default, so set it on your `make` command line if you are using a
 different value.
 
+The `make deploy` command also creates any missing parts of the TLS
+certs and keys used to secure the etcd cluster.  This stuff is kept at
+`${KOS_PERSIST}/etcd-tls/`, and the Makefile defaults `KOS_PERSIST` to
+`${HOME}/.kos/`.
+
 ### Un-Deploy
 
 With `kos` as your current working directory and with `kubectl`
@@ -452,3 +461,7 @@ macros if necessary and then `kubectl delete` everything that was
 created in the `make deploy` step.  You need the `DOCKER_PREFIX`
 variable set correctly as for `make deploy` and `make publish`, unless
 the needed files already exist.
+
+The `make undeploy` command, like `make deploy`, prepares any missing
+YAML templates for the TLS secrets for the etcd cluster --- and thus
+is also sensitive to the setting of `KOS_PERSIST`.
