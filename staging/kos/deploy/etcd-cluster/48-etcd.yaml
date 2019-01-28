@@ -6,6 +6,12 @@ metadata:
 spec:
   size: 3
   version: "3.3.11"
+  TLS:
+    static:
+      member:
+        peerSecret: etcd-peer
+        serverSecret: etcd-server
+      operatorSecret: etcd-client
   pod:
     etcdEnv:
     - name: ETCD_METRICS
