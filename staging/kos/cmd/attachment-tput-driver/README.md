@@ -111,7 +111,7 @@ The driver normally exercises each NetworkAttachment once it becomes
 ready, with `ping` operations.  This can be disabled with the
 `--omit-test` command line flag.
 
-The pings done are as follows.  Each NetworkAttachment is directly
+The pings are done as follows. Each NetworkAttachment is directly
 subjected to one test, which may indirectly test another attachment.
 For a NetworkAttachment E that is created at a time when no existing
 attachment in the same virtual network has successfully completed its
@@ -146,18 +146,23 @@ result code and whether the test was "full".  The connection-agent's
 metrics include histograms of test duration, and test counts broken
 down by result code.
 
-The mechanism used to make the ping tests, and their cleanup, happen
-is the `PostCreateExec` and `PostDeleteExec` fields of a
-NetworkAttachmentSpec.
+The mechanisms used to make the ping tests, and their cleanup, are two
+scripts loaded in the connection-agent docker image. This is done through
+instructions in the `Dockerfile`. These scripts are executed for a
+NetworkAttachment if referenced in the `PostCreateExec` and `PostDeleteExec`
+fields of its Spec. They run in a container, but they create a new network
+namespace on the host and move a network interface on the host to such
+namespace. To achieve this, the connection-agent container is less isolated
+from the host than a normal container. More specifically:
 
-Since the connection-agent runs in a container, this makes the testing
-a little tricky, particularly regarding `/var/run/netns` and the test
-scripts.  The `Dockerfile` for the connection-agent puts the test
-scripts in the docker image.  No attempt is made to connect the host's
-`/var/run/netns` into the connection-agent container (this was tried,
-with disappointing results --- the individual entries put into that
-directory seem to be useless outside the container).
+- it runs on the host network namespace
 
+- its `/var/run/netns` dir is the same as the host (through a bidirectional
+  volume mount)
+
+The first point ensures that the network interface is visible from within
+the container. The second that the newly created namespace exists on the
+host as well as the container.
 
 ## Node selection and Attachment Placement
 
