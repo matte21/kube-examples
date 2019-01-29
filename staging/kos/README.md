@@ -349,6 +349,12 @@ You will need the following installed on your build/ops machine.
 
 - openssl, any non-embarrassing version
 
+If you modify the API object type definitions then you will also need
+the following.
+
+- https://github.com/kubernetes/kube-openapi/tree/master/cmd/openapi-gen
+  , built and on your `$PATH`.
+
 With `kos` as your current working directory, `glide install` to
 populate the `kos/vendor` directory.
 
@@ -416,8 +422,15 @@ The connection agent gets annotated with `prometheus.io/sample=true`.
 
 ### Build
 
-With `kos` as your current working directory, `make build`.  This
-creates binary executable files, but not container images.
+If you modify the API object type definitions in `pkg/apis/network`
+then before proceeding with the rest of the build you must re-generate
+the generated files.  To do that, invoke the `hack/update-codegen.sh`
+script; this script takes no arguments and your current working
+directory does not matter.
+
+The main build work is done with `kos` as your current working
+directory.  Do `make build`.  This creates binary executable files,
+but not container images.
 
 ### Publish
 

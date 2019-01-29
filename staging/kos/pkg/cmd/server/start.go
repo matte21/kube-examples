@@ -25,12 +25,14 @@ import (
 	"github.com/spf13/cobra"
 
 	utilerrors "k8s.io/apimachinery/pkg/util/errors"
+//	openapinamer "k8s.io/apiserver/pkg/endpoints/openapi"
 	genericapiserver "k8s.io/apiserver/pkg/server"
 	genericoptions "k8s.io/apiserver/pkg/server/options"
 	"k8s.io/examples/staging/kos/pkg/apis/network/v1alpha1"
 	"k8s.io/examples/staging/kos/pkg/apiserver"
 	networkclientset "k8s.io/examples/staging/kos/pkg/client/clientset/internalversion"
 	networkinformers "k8s.io/examples/staging/kos/pkg/client/informers/internalversion"
+	generatedopenapi "k8s.io/examples/staging/kos/pkg/generated/openapi"
 )
 
 const defaultEtcdPathPrefix = "/registry/network.kubernetes.io"
@@ -102,6 +104,9 @@ func (o *NetworkAPIServerOptions) Complete() error {
 func (o *NetworkAPIServerOptions) Config() (*apiserver.Config, error) {
 	serverConfig := genericapiserver.NewRecommendedConfig(apiserver.Codecs)
 	serverConfig.EnableMetrics = true
+	// For later releases we will need openapinamer.NewDefinitionNamer(apiserver.Scheme)
+	serverConfig.OpenAPIConfig = genericapiserver.DefaultOpenAPIConfig(generatedopenapi.GetOpenAPIDefinitions, apiserver.Scheme)
+	serverConfig.OpenAPIConfig.Info.Title = "network-apiserver"
 	if err := o.RecommendedOptions.ApplyTo(serverConfig, apiserver.Scheme); err != nil {
 		return nil, err
 	}
