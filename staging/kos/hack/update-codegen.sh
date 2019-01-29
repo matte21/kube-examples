@@ -31,5 +31,11 @@ ${CODEGEN_PKG}/generate-internal-groups.sh all \
   --output-base "$(dirname ${BASH_SOURCE})/../../../../.." \
   --go-header-file ${SCRIPT_ROOT}/hack/boilerplate.go.txt
 
+openapi-gen --logtostderr \
+  -i k8s.io/examples/staging/kos/pkg/apis/network/v1alpha1,k8s.io/apimachinery/pkg/apis/meta/v1,k8s.io/apimachinery/pkg/version,k8s.io/apimachinery/pkg/runtime \
+  -p k8s.io/examples/staging/kos/pkg/generated/openapi \
+  -h ${SCRIPT_ROOT}/hack/boilerplate.go.txt \
+  -O zz_generated.openapi -r report
+
 # To use your own boilerplate text use:
 #   --go-header-file ${SCRIPT_ROOT}/hack/custom-boilerplate.go.txt

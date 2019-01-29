@@ -56,7 +56,7 @@ type NetworkAttachmentSpec struct {
 	// `ifname`, `ipv4`, and `mac`.
 	// +optional
 	// +patchStrategy=replace
-	PostCreateExec []string `json:"postCreateExec,omitempty" protobuf:"bytes,3,opt,name=postCreateExec"`
+	PostCreateExec []string `json:"postCreateExec,omitempty" protobuf:"bytes,3,opt,name=postCreateExec" patchStrategy:"replace"`
 
 	// PostDeleteExec is a command to exec inside the attachment
 	// host's connection agent container after the attachment's Linux
@@ -70,7 +70,7 @@ type NetworkAttachmentSpec struct {
 	// expansions as for PostCreateExec are applied.
 	// +optional
 	// +patchStrategy=replace
-	PostDeleteExec []string `json:"postDeleteExec,omitempty" protobuf:"bytes,4,opt,name=postDeleteExec"`
+	PostDeleteExec []string `json:"postDeleteExec,omitempty" protobuf:"bytes,4,opt,name=postDeleteExec" patchStrategy:"replace"`
 }
 
 type NetworkAttachmentStatus struct {
@@ -116,12 +116,12 @@ type NetworkAttachmentErrors struct {
 	// IPAM holds errors about the IP Address Management for this attachment.
 	// +optional
 	// +patchStrategy=replace
-	IPAM []string `json:"ipam,omitempty" protobuf:"bytes,1,opt,name=ipam"`
+	IPAM []string `json:"ipam,omitempty" protobuf:"bytes,1,opt,name=ipam" patchStrategy:"replace"`
 
 	// Host holds errors from the node where this attachment is placed.
 	// +optional
 	// +patchStrategy=replace
-	Host []string `json:"host,omitempty" protobuf:"bytes,2,opt,name=host"`
+	Host []string `json:"host,omitempty" protobuf:"bytes,2,opt,name=host" patchStrategy:"replace"`
 }
 
 // ExecReport reports on what happened when a command was execd.
@@ -187,7 +187,7 @@ type SubnetStatus struct {
 	// Errors are the complaints, if any, from the IPAM controller.
 	// +optional
 	// +patchStrategy=replace
-	Errors []string `json:"errors,omitempty" protobuf:"bytes,1,opt,name=errors"`
+	Errors []string `json:"errors,omitempty" protobuf:"bytes,1,opt,name=errors" patchStrategy:"replace"`
 }
 
 // +genclient
