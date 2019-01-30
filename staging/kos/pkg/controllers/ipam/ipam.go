@@ -88,7 +88,7 @@ type IPAMController struct {
 	// round trip time to update attachment status
 	attachmentUpdateHistogram prometheus.Histogram
 
-	// Was the anticipation used (0 or 1)?
+	// Kind of anticipation use (0, 1, or 2)
 	anticipationUsedHistogram prometheus.Histogram
 
 	// Was the IP address in the Status not in the cache (0 or 1)?
@@ -167,8 +167,8 @@ func NewIPAMController(netIfc kosclientv1a1.NetworkV1alpha1Interface,
 			Namespace: MetricsNamespace,
 			Subsystem: MetricsSubsystem,
 			Name:      "anticipation_used",
-			Help:      "Was the IP anticipation used?",
-			Buckets:   []float64{0, 1},
+			Help:      "Kind of anticipation use",
+			Buckets:   []float64{0, 1, 2},
 		})
 
 	statusUsedHistogram := prometheus.NewHistogram(
@@ -415,18 +415,29 @@ func (ctlr *IPAMController) processNetworkAttachment(ns, name string) error {
 		return nil
 	}
 	var ipForStatus gonet.IP
-	anticipationUsed := float64(0)
+	anticipationUsed := false
+	withClue := false
 	defer func() {
-		ctlr.anticipationUsedHistogram.Observe(anticipationUsed)
+		if anticipationUsed {
+			if withClue {
+				ctlr.anticipationUsedHistogram.Observe(1)
+			} else {
+				ctlr.anticipationUsedHistogram.Observe(2)
+			}
+			glog.V(5).Infof("Anticipation used withClue=%v for attachment=%s/%s, resourceVersion=%s\n", withClue, ns, name, att.ResourceVersion)
+		} else {
+			ctlr.anticipationUsedHistogram.Observe(0)
+		}
 	}()
 	if lockForStatus.Obj != nil {
 		ipForStatus = lockForStatus.GetIP()
 		if ipForStatus.Equal(nadat.anticipatedIPv4) {
-			anticipationUsed = 1
+			anticipationUsed = true
+			withClue = true
 			return nil
 		}
 	} else if nadat.anticipatedIPv4 != nil {
-		anticipationUsed = 1
+		anticipationUsed = true
 		return nil
 	} else {
 		lockForStatus, ipForStatus, err = ctlr.pickAndLockAddress(ns, name, att, subnetName, desiredVNI, desiredBaseU, desiredPrefixLen)
