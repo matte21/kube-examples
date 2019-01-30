@@ -15,7 +15,7 @@
   "editable": true,
   "gnetId": null,
   "graphTooltip": 0,
-  "id": 11,
+  "id": 4,
   "links": [],
   "panels": [
     {
@@ -562,12 +562,190 @@
       "dashLength": 10,
       "dashes": false,
       "datasource": "prometheus",
+      "description": "Sum, over workers, of utilization of that worker",
       "fill": 1,
       "gridPos": {
         "h": 7,
         "w": 24,
         "x": 0,
         "y": 37
+      },
+      "id": 25,
+      "legend": {
+        "avg": false,
+        "current": false,
+        "max": false,
+        "min": false,
+        "show": true,
+        "total": false,
+        "values": false
+      },
+      "lines": true,
+      "linewidth": 1,
+      "links": [],
+      "nullPointMode": "null",
+      "percentage": false,
+      "pointradius": 5,
+      "points": false,
+      "renderer": "flot",
+      "seriesOverrides": [],
+      "spaceLength": 10,
+      "stack": false,
+      "steppedLine": false,
+      "targets": [
+        {
+          "expr": "rate(kos_ipam_controller_queue_work_duration_sum[1m])/1.0e6",
+          "format": "time_series",
+          "intervalFactor": 1,
+          "legendFormat": "{{ instance }}",
+          "refId": "A"
+        }
+      ],
+      "thresholds": [],
+      "timeFrom": null,
+      "timeRegions": [],
+      "timeShift": null,
+      "title": "IPAM Worker Utilization Sum",
+      "tooltip": {
+        "shared": true,
+        "sort": 0,
+        "value_type": "individual"
+      },
+      "type": "graph",
+      "xaxis": {
+        "buckets": null,
+        "mode": "time",
+        "name": null,
+        "show": true,
+        "values": []
+      },
+      "yaxes": [
+        {
+          "format": "short",
+          "label": null,
+          "logBase": 1,
+          "max": null,
+          "min": null,
+          "show": true
+        },
+        {
+          "format": "short",
+          "label": null,
+          "logBase": 1,
+          "max": null,
+          "min": null,
+          "show": true
+        }
+      ],
+      "yaxis": {
+        "align": false,
+        "alignLevel": null
+      }
+    },
+    {
+      "aliasColors": {},
+      "bars": false,
+      "dashLength": 10,
+      "dashes": false,
+      "datasource": "prometheus",
+      "fill": 1,
+      "gridPos": {
+        "h": 8,
+        "w": 24,
+        "x": 0,
+        "y": 44
+      },
+      "id": 27,
+      "legend": {
+        "avg": false,
+        "current": false,
+        "max": false,
+        "min": false,
+        "show": true,
+        "total": false,
+        "values": false
+      },
+      "lines": true,
+      "linewidth": 1,
+      "links": [],
+      "nullPointMode": "null",
+      "percentage": false,
+      "pointradius": 5,
+      "points": false,
+      "renderer": "flot",
+      "seriesOverrides": [],
+      "spaceLength": 10,
+      "stack": true,
+      "steppedLine": false,
+      "targets": [
+        {
+          "expr": "rate(kos_ipam_attachment_update_latency_seconds_sum[1m])",
+          "format": "time_series",
+          "intervalFactor": 1,
+          "legendFormat": "attachments @ {{ instance }}",
+          "refId": "A"
+        },
+        {
+          "expr": "sum(rate(kos_ipam_ip_lock_latency_seconds_sum[1m])) without (op, err)",
+          "format": "time_series",
+          "intervalFactor": 1,
+          "legendFormat": "locks @ {{ instance }}",
+          "refId": "B"
+        }
+      ],
+      "thresholds": [],
+      "timeFrom": null,
+      "timeRegions": [],
+      "timeShift": null,
+      "title": "IPAM Worker Utilization Sum For Calls Out",
+      "tooltip": {
+        "shared": true,
+        "sort": 0,
+        "value_type": "individual"
+      },
+      "type": "graph",
+      "xaxis": {
+        "buckets": null,
+        "mode": "time",
+        "name": null,
+        "show": true,
+        "values": []
+      },
+      "yaxes": [
+        {
+          "format": "short",
+          "label": null,
+          "logBase": 1,
+          "max": null,
+          "min": null,
+          "show": true
+        },
+        {
+          "format": "short",
+          "label": null,
+          "logBase": 1,
+          "max": null,
+          "min": null,
+          "show": true
+        }
+      ],
+      "yaxis": {
+        "align": false,
+        "alignLevel": null
+      }
+    },
+    {
+      "aliasColors": {},
+      "bars": false,
+      "dashLength": 10,
+      "dashes": false,
+      "datasource": "prometheus",
+      "fill": 1,
+      "gridPos": {
+        "h": 7,
+        "w": 24,
+        "x": 0,
+        "y": 52
       },
       "id": 4,
       "legend": {
@@ -652,7 +830,7 @@
         "h": 7,
         "w": 24,
         "x": 0,
-        "y": 44
+        "y": 59
       },
       "id": 5,
       "legend": {
@@ -737,7 +915,7 @@
         "h": 7,
         "w": 24,
         "x": 0,
-        "y": 51
+        "y": 66
       },
       "id": 6,
       "legend": {
@@ -822,7 +1000,7 @@
         "h": 7,
         "w": 24,
         "x": 0,
-        "y": 58
+        "y": 73
       },
       "id": 12,
       "legend": {
@@ -907,7 +1085,7 @@
         "h": 7,
         "w": 24,
         "x": 0,
-        "y": 65
+        "y": 80
       },
       "id": 14,
       "legend": {
@@ -992,7 +1170,7 @@
         "h": 7,
         "w": 24,
         "x": 0,
-        "y": 72
+        "y": 87
       },
       "id": 15,
       "legend": {
@@ -1077,7 +1255,7 @@
         "h": 7,
         "w": 24,
         "x": 0,
-        "y": 79
+        "y": 94
       },
       "id": 16,
       "legend": {
@@ -1162,7 +1340,7 @@
         "h": 7,
         "w": 24,
         "x": 0,
-        "y": 86
+        "y": 101
       },
       "id": 17,
       "legend": {
@@ -1247,7 +1425,7 @@
         "h": 7,
         "w": 24,
         "x": 0,
-        "y": 93
+        "y": 108
       },
       "id": 7,
       "legend": {
@@ -1273,11 +1451,18 @@
       "steppedLine": false,
       "targets": [
         {
-          "expr": "rate(kos_ipam_anticipation_used_sum[1m])",
+          "expr": "sum(rate(kos_ipam_anticipation_used_bucket{le=\"1\"}[1m])) without (le) - sum(rate(kos_ipam_anticipation_used_bucket{le=\"0\"}[1m])) without (le)",
           "format": "time_series",
           "intervalFactor": 2,
-          "legendFormat": "anticipation @ {{ instance }}",
+          "legendFormat": "clued anticipation @ {{ instance }}",
           "refId": "A"
+        },
+        {
+          "expr": "sum(rate(kos_ipam_anticipation_used_bucket{le=\"2\"}[1m])) without (le) - sum(rate(kos_ipam_anticipation_used_bucket{le=\"1\"}[1m])) without (le)",
+          "format": "time_series",
+          "intervalFactor": 2,
+          "legendFormat": "unclued anticipation @ {{ instance }}",
+          "refId": "C"
         },
         {
           "expr": "rate(kos_ipam_status_used_sum[1m])",
@@ -1339,7 +1524,7 @@
         "h": 7,
         "w": 24,
         "x": 0,
-        "y": 100
+        "y": 115
       },
       "id": 18,
       "legend": {
@@ -1424,7 +1609,7 @@
         "h": 7,
         "w": 24,
         "x": 0,
-        "y": 107
+        "y": 122
       },
       "id": 19,
       "legend": {
@@ -1538,5 +1723,5 @@
   "timezone": "",
   "title": "KOS Internals",
   "uid": "39Dk0_Qik",
-  "version": 10
+  "version": 3
 }
