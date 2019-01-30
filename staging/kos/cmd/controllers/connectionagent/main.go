@@ -121,16 +121,16 @@ func main() {
 			glog.Errorf("Failed to create Kubernetes clientset: %s\n", err.Error())
 			goto TryAgain
 		}
-		svc, err = kubeClientset.CoreV1().Services("default").Get("kubernetes", k8smetav1.GetOptions{})
+		svc, err = kubeClientset.CoreV1().Services("example-com").Get("network-api", k8smetav1.GetOptions{})
 		if err != nil {
-			glog.Errorf("Failed to fetch kubernetes service: %s\n", err.Error())
+			glog.Errorf("Failed to fetch network-api service: %s\n", err.Error())
 			goto TryAgain
 		}
 		if svc.Spec.ClusterIP == "" || svc.Spec.ClusterIP == "None" {
-			glog.Errorf("The kubernetes service has a useless Cluster IP (%q).\n", svc.Spec.ClusterIP)
+			glog.Errorf("The network-api service has a useless Cluster IP (%q).\n", svc.Spec.ClusterIP)
 			goto TryAgain
 		}
-		glog.Infof("Found Cluster IP address %q for the kubernetes service.\n", svc.Spec.ClusterIP)
+		glog.Infof("Found Cluster IP address %q for the network-api service.\n", svc.Spec.ClusterIP)
 		clientCfg.Host = svc.Spec.ClusterIP + ":443"
 		break
 	TryAgain:

@@ -494,7 +494,7 @@ func (slot *Slot) close(VNI uint32, nsName string) *netv1a1.NetworkAttachment {
 		glog.Infof("Attachment got no address: attachment=%s/%s, VNI=%06x, node=%s\n", nsName, slot.currentAttachmentName, VNI, slot.currentNodeName)
 	} else if slot.readyTime == (time.Time{}) && slot.brokenTime == (time.Time{}) {
 		glog.Infof("Attachment got no state: attachment=%s/%s, VNI=%06x, node=%s\n", nsName, slot.currentAttachmentName, VNI, slot.currentNodeName)
-	} else if slot.testedTime == (time.Time{}) && !*omitTest {
+	} else if slot.readyTime != (time.Time{}) && slot.testedTime == (time.Time{}) && !*omitTest {
 		glog.Infof("Attachment test did not complete: attachment=%s/%s, VNI=%06x, node=%s\n", nsName, slot.currentAttachmentName, VNI, slot.currentNodeName)
 	}
 	return slot.natt
@@ -590,13 +590,14 @@ var stopOnPingFail = flag.Bool("stop-on-ping-fail", true, "stop diriving as soon
 
 var stopOnBreak = flag.Bool("stop-on-break", true, "stop driving as soon as breakage is observed")
 var waitAfterCreate = flag.Duration("wait-after-create", 0, "if non-zero, wait this amount of time and then exit after creating all the attachments")
+var waitAfterDelete = flag.Duration("wait-after-delete", 15*time.Second, "time to wait for notifications after last deletion")
 var kubeconfigPath = flag.String("kubeconfig", "", "Path to kubeconfig file")
 var num_attachments = flag.Int("num-attachments", 450, "Total number of attachments to create")
 var threads = flag.Uint64("threads", 1, "Total number of threads to use")
 var targetRate = flag.Float64("rate", 10, "Target aggregate rate, in ops/sec")
 var subnetSizeFactor = flag.Float64("subnet-size-factor", 1.0, "size each subnet for this factor times the number of addresses needed")
 var onlyNode = flag.String("only-node", "", "node, if any, to be the exclusive location of attachments")
-var nodeLabelSelector = flag.String("node-label-selector", "", "label-selector, if any, to restrict which nodes get attachments")
+var nodeLabelSelector = flag.String("node-label-selector", "", "label-selector, if any, to add to restriction role.kos.example.com/workload=true on which nodes get attachments")
 
 var runID = flag.String("runid", "", "unique ID of this run (default is randomly generated)")
 
@@ -636,7 +637,7 @@ func main() {
 		os.Exit(5)
 	}
 
-	glog.Warningf("Driver parameters: num_nets=%d, top_net_size=%d, subnetSizeFactor=%g, law_powr=%g, law_bias=%d, just_count=%v, roundRobin=%v, pendingWait=%s, stopOnPingFail=%v, singleNetwork=%v, kubeconfigPath=%q, num_attachments=%d, threads=%d, targetRate=%g, waitAfterCreate=%s, runID=%q\n", *num_nets, *top_net_size, *subnetSizeFactor, *law_power, *law_bias, *just_count, *roundRobin, *pendingWait, *stopOnPingFail, *singleNetwork, *kubeconfigPath, *num_attachments, *threads, *targetRate, *waitAfterCreate, *runID)
+	glog.Warningf("Driver parameters: num_nets=%d, top_net_size=%d, subnetSizeFactor=%g, law_powr=%g, law_bias=%d, just_count=%v, roundRobin=%v, pendingWait=%s, stopOnPingFail=%v, singleNetwork=%v, kubeconfigPath=%q, num_attachments=%d, threads=%d, targetRate=%g, waitAfterCreate=%s, waitAfterDelete=%s, onlyNode=%q, nodeLabelSelector=%q, runID=%q\n", *num_nets, *top_net_size, *subnetSizeFactor, *law_power, *law_bias, *just_count, *roundRobin, *pendingWait, *stopOnPingFail, *singleNetwork, *kubeconfigPath, *num_attachments, *threads, *targetRate, *waitAfterCreate, *waitAfterDelete, *onlyNode, *nodeLabelSelector, *runID)
 
 	vni0 := rand.Intn(32)*65536 + 1 // allow 64K VNIs in a run without overflowing the 21 bit limit
 	glog.Warningf("First VNI is %06x\n", vni0)
@@ -941,8 +942,12 @@ func main() {
 	vnAttachments = shuffle(vnAttachments)
 	vnAttachments = shuffle(vnAttachments)
 
+	fullNodeLabelSelector := "role.kos.example.com/workload=true"
+	if len(*nodeLabelSelector) > 0 {
+		fullNodeLabelSelector = fullNodeLabelSelector + "," + *nodeLabelSelector
+	}
 	nodeList, err := urClientset.CoreV1().Nodes().List(metav1.ListOptions{
-		LabelSelector: *nodeLabelSelector})
+		LabelSelector: fullNodeLabelSelector})
 	if err != nil {
 		glog.Errorf("Failed to get list of nodes: %s\n", err.Error())
 		os.Exit(30)
@@ -1013,13 +1018,13 @@ func main() {
 		case <-wt.C:
 		case <-stopCh:
 		}
-		for _, virtNet := range virtNets {
-			for idx := range virtNet.slots {
-				virtNet.slots[idx].close(virtNet.ID, theKubeNS)
-			}
-		}
 	} else {
-		time.Sleep(10 * time.Second) // wait for straggler notifications
+		time.Sleep(*waitAfterDelete) // wait for straggler notifications
+	}
+	for _, virtNet := range virtNets {
+		for idx := range virtNet.slots {
+			virtNet.slots[idx].close(virtNet.ID, theKubeNS)
+		}
 	}
 	saveProMetrics(promapi.Config{"http://localhost" + MetricsAddr, nil}, outputDir)
 	createLatencyHistogram.DumpToLog()
@@ -1161,7 +1166,7 @@ func RunThread(kClientset *kosclientset.Clientset, stopCh <-chan struct{}, work 
 			if err != nil {
 				slot.setCurrentName(slotIndex, "", "", cd)
 				failedCreates.Inc()
-				glog.Infof("Failed to create NetworkAttachment: attachment=%s/%s, VNI=%06x, subnet=%s, node=%s, err=%s\n", theKubeNS, objname, virtNet.ID, subnet.Name, nodeName, err.Error())
+				glog.Infof("Failed to create NetworkAttachment: attachment=%s/%s, VNI=%06x, subnet=%s, node=%s, preCreateTime=%s, err=%s\n", theKubeNS, objname, virtNet.ID, subnet.Name, nodeName, ti0.Format(kosutil.RFC3339Milli), err.Error())
 			} else {
 				slot.setNetAtt(virtNet, slotIndex, ti0, tif, retObj, fullTest)
 				successfulCreates.Inc()
@@ -1183,7 +1188,7 @@ func RunThread(kClientset *kosclientset.Clientset, stopCh <-chan struct{}, work 
 				deleteLatencyHistogram.ObserveAt(opLatency, theKubeNS, natt.Name)
 				if err != nil {
 					failedDeletes.Inc()
-					glog.Infof("Failed to delete NetworkAttachment: attachment=%s/%s, VNI=%06x, subnet=%s, node=%s, ipv4=%s, err=%s\n", theKubeNS, natt.Name, virtNet.ID, natt.Spec.Subnet, natt.Spec.Node, natt.Status.IPv4, err.Error())
+					glog.Infof("Failed to delete NetworkAttachment: attachment=%s/%s, VNI=%06x, subnet=%s, node=%s, preDeleteTime=%s, ipv4=%s, err=%s\n", theKubeNS, natt.Name, virtNet.ID, natt.Spec.Subnet, natt.Spec.Node, ti0.Format(kosutil.RFC3339Milli), natt.Status.IPv4, err.Error())
 				} else {
 					successfulDeletes.Inc()
 					glog.Infof("Deleted NetworkAttachment: attachment=%s/%s, VNI=%06x, subnet=%s, node=%s, preDeleteTime=%s, ipv4=%s\n", theKubeNS, natt.Name, virtNet.ID, natt.Spec.Subnet, natt.Spec.Node, ti0.Format(kosutil.RFC3339Milli), natt.Status.IPv4)
