@@ -2122,7 +2122,7 @@ data:
       "editable": true,
       "gnetId": null,
       "graphTooltip": 0,
-      "id": 12,
+      "id": 3,
       "links": [],
       "panels": [
         {
@@ -2642,176 +2642,6 @@ data:
             "align": false,
             "alignLevel": null
           }
-        },
-        {
-          "aliasColors": {},
-          "bars": false,
-          "dashLength": 10,
-          "dashes": false,
-          "datasource": "prometheus",
-          "fill": 1,
-          "gridPos": {
-            "h": 7,
-            "w": 24,
-            "x": 0,
-            "y": 42
-          },
-          "id": 6,
-          "legend": {
-            "avg": false,
-            "current": false,
-            "max": false,
-            "min": false,
-            "show": true,
-            "total": false,
-            "values": false
-          },
-          "lines": true,
-          "linewidth": 1,
-          "links": [],
-          "nullPointMode": "null",
-          "percentage": false,
-          "pointradius": 5,
-          "points": false,
-          "renderer": "flot",
-          "seriesOverrides": [],
-          "spaceLength": 10,
-          "stack": false,
-          "steppedLine": false,
-          "targets": [
-            {
-              "expr": "histogram_quantile(0.99, rate(kos_ipam_attachment_update_latency_seconds_bucket[1m]))",
-              "format": "time_series",
-              "intervalFactor": 2,
-              "legendFormat": "{{ instance }}",
-              "refId": "A"
-            }
-          ],
-          "thresholds": [],
-          "timeFrom": null,
-          "timeRegions": [],
-          "timeShift": null,
-          "title": "99th Percentile Attachment Set-Address Latency secs",
-          "tooltip": {
-            "shared": true,
-            "sort": 0,
-            "value_type": "individual"
-          },
-          "type": "graph",
-          "xaxis": {
-            "buckets": null,
-            "mode": "time",
-            "name": null,
-            "show": true,
-            "values": []
-          },
-          "yaxes": [
-            {
-              "format": "short",
-              "label": null,
-              "logBase": 1,
-              "max": null,
-              "min": null,
-              "show": true
-            },
-            {
-              "format": "short",
-              "label": null,
-              "logBase": 1,
-              "max": null,
-              "min": null,
-              "show": true
-            }
-          ],
-          "yaxis": {
-            "align": false,
-            "alignLevel": null
-          }
-        },
-        {
-          "aliasColors": {},
-          "bars": false,
-          "dashLength": 10,
-          "dashes": false,
-          "datasource": "prometheus",
-          "fill": 1,
-          "gridPos": {
-            "h": 7,
-            "w": 24,
-            "x": 0,
-            "y": 49
-          },
-          "id": 5,
-          "legend": {
-            "avg": false,
-            "current": false,
-            "max": false,
-            "min": false,
-            "show": true,
-            "total": false,
-            "values": false
-          },
-          "lines": true,
-          "linewidth": 1,
-          "links": [],
-          "nullPointMode": "null",
-          "percentage": false,
-          "pointradius": 5,
-          "points": false,
-          "renderer": "flot",
-          "seriesOverrides": [],
-          "spaceLength": 10,
-          "stack": false,
-          "steppedLine": false,
-          "targets": [
-            {
-              "expr": "histogram_quantile(0.99, rate(kos_agent_attachment_status_latency_seconds_bucket[1m]))",
-              "format": "time_series",
-              "intervalFactor": 2,
-              "legendFormat": "{{ node }} {{ err }}",
-              "refId": "A"
-            }
-          ],
-          "thresholds": [],
-          "timeFrom": null,
-          "timeRegions": [],
-          "timeShift": null,
-          "title": "99th Percentile Attachment Set-Ready Latency secs, by node and error",
-          "tooltip": {
-            "shared": true,
-            "sort": 0,
-            "value_type": "individual"
-          },
-          "type": "graph",
-          "xaxis": {
-            "buckets": null,
-            "mode": "time",
-            "name": null,
-            "show": true,
-            "values": []
-          },
-          "yaxes": [
-            {
-              "format": "short",
-              "label": null,
-              "logBase": 1,
-              "max": null,
-              "min": null,
-              "show": true
-            },
-            {
-              "format": "short",
-              "label": null,
-              "logBase": 1,
-              "max": null,
-              "min": null,
-              "show": true
-            }
-          ],
-          "yaxis": {
-            "align": false,
-            "alignLevel": null
-          }
         }
       ],
       "refresh": false,
@@ -2853,7 +2683,7 @@ data:
       "timezone": "",
       "title": "KOS External",
       "uid": "AlvkAlwik",
-      "version": 5
+      "version": 1
     }
   kos-internals.json: |
     {
@@ -2884,7 +2714,7 @@ data:
           "datasource": "prometheus",
           "fill": 1,
           "gridPos": {
-            "h": 9,
+            "h": 7,
             "w": 12,
             "x": 0,
             "y": 0
@@ -2969,7 +2799,7 @@ data:
           "datasource": "prometheus",
           "fill": 1,
           "gridPos": {
-            "h": 9,
+            "h": 7,
             "w": 12,
             "x": 12,
             "y": 0
@@ -3057,7 +2887,7 @@ data:
             "h": 7,
             "w": 24,
             "x": 0,
-            "y": 9
+            "y": 7
           },
           "id": 2,
           "legend": {
@@ -3149,7 +2979,7 @@ data:
             "h": 7,
             "w": 24,
             "x": 0,
-            "y": 16
+            "y": 14
           },
           "id": 1,
           "legend": {
@@ -3241,7 +3071,7 @@ data:
             "h": 7,
             "w": 24,
             "x": 0,
-            "y": 23
+            "y": 21
           },
           "id": 3,
           "legend": {
@@ -3333,7 +3163,7 @@ data:
             "h": 7,
             "w": 24,
             "x": 0,
-            "y": 30
+            "y": 28
           },
           "id": 13,
           "legend": {
@@ -3426,7 +3256,7 @@ data:
             "h": 7,
             "w": 24,
             "x": 0,
-            "y": 37
+            "y": 35
           },
           "id": 25,
           "legend": {
@@ -3508,10 +3338,10 @@ data:
           "datasource": "prometheus",
           "fill": 1,
           "gridPos": {
-            "h": 8,
+            "h": 7,
             "w": 24,
             "x": 0,
-            "y": 44
+            "y": 42
           },
           "id": 27,
           "legend": {
@@ -3603,7 +3433,283 @@ data:
             "h": 7,
             "w": 24,
             "x": 0,
-            "y": 52
+            "y": 49
+          },
+          "id": 28,
+          "legend": {
+            "avg": false,
+            "current": false,
+            "max": false,
+            "min": false,
+            "show": true,
+            "total": false,
+            "values": false
+          },
+          "lines": true,
+          "linewidth": 1,
+          "links": [],
+          "nullPointMode": "null",
+          "percentage": false,
+          "pointradius": 5,
+          "points": false,
+          "renderer": "flot",
+          "seriesOverrides": [],
+          "spaceLength": 10,
+          "stack": false,
+          "steppedLine": false,
+          "targets": [
+            {
+              "expr": "histogram_quantile(0.99, rate(kos_ipam_attachment_update_latency_seconds_bucket[1m]))",
+              "format": "time_series",
+              "intervalFactor": 1,
+              "legendFormat": "{{ instance }} status update",
+              "refId": "A"
+            },
+            {
+              "expr": "histogram_quantile(0.99, rate(kos_ipam_ip_lock_latency_seconds_bucket[1m]))",
+              "format": "time_series",
+              "intervalFactor": 1,
+              "legendFormat": "{{ instance }} lock {{ op }} {{ err }}",
+              "refId": "B"
+            }
+          ],
+          "thresholds": [],
+          "timeFrom": null,
+          "timeRegions": [],
+          "timeShift": null,
+          "title": "99th Percentile IPAM Call Out Latency",
+          "tooltip": {
+            "shared": true,
+            "sort": 0,
+            "value_type": "individual"
+          },
+          "type": "graph",
+          "xaxis": {
+            "buckets": null,
+            "mode": "time",
+            "name": null,
+            "show": true,
+            "values": []
+          },
+          "yaxes": [
+            {
+              "format": "short",
+              "label": null,
+              "logBase": 1,
+              "max": null,
+              "min": null,
+              "show": true
+            },
+            {
+              "format": "short",
+              "label": null,
+              "logBase": 1,
+              "max": null,
+              "min": null,
+              "show": true
+            }
+          ],
+          "yaxis": {
+            "align": false,
+            "alignLevel": null
+          }
+        },
+        {
+          "aliasColors": {},
+          "bars": false,
+          "dashLength": 10,
+          "dashes": false,
+          "datasource": "prometheus",
+          "fill": 1,
+          "gridPos": {
+            "h": 7,
+            "w": 24,
+            "x": 0,
+            "y": 56
+          },
+          "id": 30,
+          "legend": {
+            "avg": false,
+            "current": false,
+            "max": false,
+            "min": false,
+            "show": true,
+            "total": false,
+            "values": false
+          },
+          "lines": true,
+          "linewidth": 1,
+          "links": [],
+          "nullPointMode": "null",
+          "percentage": false,
+          "pointradius": 5,
+          "points": false,
+          "renderer": "flot",
+          "seriesOverrides": [],
+          "spaceLength": 10,
+          "stack": false,
+          "steppedLine": false,
+          "targets": [
+            {
+              "expr": "rate(kos_ipam_attachment_update_latency_seconds_count[1m])",
+              "format": "time_series",
+              "intervalFactor": 1,
+              "legendFormat": "{{ instance }} status update",
+              "refId": "A"
+            },
+            {
+              "expr": "rate(kos_ipam_ip_lock_latency_seconds_count[1m])",
+              "format": "time_series",
+              "intervalFactor": 1,
+              "legendFormat": "{{ instance }} lock {{ op }} {{ err }}",
+              "refId": "B"
+            }
+          ],
+          "thresholds": [],
+          "timeFrom": null,
+          "timeRegions": [],
+          "timeShift": null,
+          "title": "Rate of IPAM Call Outs",
+          "tooltip": {
+            "shared": true,
+            "sort": 0,
+            "value_type": "individual"
+          },
+          "type": "graph",
+          "xaxis": {
+            "buckets": null,
+            "mode": "time",
+            "name": null,
+            "show": true,
+            "values": []
+          },
+          "yaxes": [
+            {
+              "format": "short",
+              "label": null,
+              "logBase": 1,
+              "max": null,
+              "min": null,
+              "show": true
+            },
+            {
+              "format": "short",
+              "label": null,
+              "logBase": 1,
+              "max": null,
+              "min": null,
+              "show": true
+            }
+          ],
+          "yaxis": {
+            "align": false,
+            "alignLevel": null
+          }
+        },
+        {
+          "aliasColors": {},
+          "bars": false,
+          "dashLength": 10,
+          "dashes": false,
+          "datasource": "prometheus",
+          "fill": 1,
+          "gridPos": {
+            "h": 7,
+            "w": 24,
+            "x": 0,
+            "y": 63
+          },
+          "id": 32,
+          "legend": {
+            "avg": false,
+            "current": false,
+            "max": false,
+            "min": false,
+            "show": true,
+            "total": false,
+            "values": false
+          },
+          "lines": true,
+          "linewidth": 1,
+          "links": [],
+          "nullPointMode": "null",
+          "percentage": false,
+          "pointradius": 5,
+          "points": false,
+          "renderer": "flot",
+          "seriesOverrides": [],
+          "spaceLength": 10,
+          "stack": false,
+          "steppedLine": false,
+          "targets": [
+            {
+              "expr": "rate(kos_ipam_attachment_update_latency_seconds_sum[1m]) / rate(kos_ipam_attachment_update_latency_seconds_count[1m])",
+              "format": "time_series",
+              "intervalFactor": 1,
+              "legendFormat": "{{ instance }} status update",
+              "refId": "A"
+            },
+            {
+              "expr": "rate(kos_ipam_ip_lock_latency_seconds_sum[1m]) / rate(kos_ipam_ip_lock_latency_seconds_count[1m])",
+              "format": "time_series",
+              "intervalFactor": 1,
+              "legendFormat": "{{ instance }} lock {{ op }} {{ err }}",
+              "refId": "B"
+            }
+          ],
+          "thresholds": [],
+          "timeFrom": null,
+          "timeRegions": [],
+          "timeShift": null,
+          "title": "Average IPAM Call Out Latency",
+          "tooltip": {
+            "shared": true,
+            "sort": 0,
+            "value_type": "individual"
+          },
+          "type": "graph",
+          "xaxis": {
+            "buckets": null,
+            "mode": "time",
+            "name": null,
+            "show": true,
+            "values": []
+          },
+          "yaxes": [
+            {
+              "format": "short",
+              "label": null,
+              "logBase": 1,
+              "max": null,
+              "min": null,
+              "show": true
+            },
+            {
+              "format": "short",
+              "label": null,
+              "logBase": 1,
+              "max": null,
+              "min": null,
+              "show": true
+            }
+          ],
+          "yaxis": {
+            "align": false,
+            "alignLevel": null
+          }
+        },
+        {
+          "aliasColors": {},
+          "bars": false,
+          "dashLength": 10,
+          "dashes": false,
+          "datasource": "prometheus",
+          "fill": 1,
+          "gridPos": {
+            "h": 7,
+            "w": 24,
+            "x": 0,
+            "y": 70
           },
           "id": 4,
           "legend": {
@@ -3688,7 +3794,177 @@ data:
             "h": 7,
             "w": 24,
             "x": 0,
-            "y": 59
+            "y": 77
+          },
+          "id": 29,
+          "legend": {
+            "avg": false,
+            "current": false,
+            "max": false,
+            "min": false,
+            "show": true,
+            "total": false,
+            "values": false
+          },
+          "lines": true,
+          "linewidth": 1,
+          "links": [],
+          "nullPointMode": "null",
+          "percentage": false,
+          "pointradius": 5,
+          "points": false,
+          "renderer": "flot",
+          "seriesOverrides": [],
+          "spaceLength": 10,
+          "stack": false,
+          "steppedLine": false,
+          "targets": [
+            {
+              "expr": "histogram_quantile(0.99, rate(kos_agent_attachment_status_latency_seconds_bucket[1m]))",
+              "format": "time_series",
+              "intervalFactor": 2,
+              "legendFormat": "{{ node }} {{ err }}",
+              "refId": "A"
+            }
+          ],
+          "thresholds": [],
+          "timeFrom": null,
+          "timeRegions": [],
+          "timeShift": null,
+          "title": "99th Percentile Status Update From CA Latency",
+          "tooltip": {
+            "shared": true,
+            "sort": 0,
+            "value_type": "individual"
+          },
+          "type": "graph",
+          "xaxis": {
+            "buckets": null,
+            "mode": "time",
+            "name": null,
+            "show": true,
+            "values": []
+          },
+          "yaxes": [
+            {
+              "format": "short",
+              "label": null,
+              "logBase": 1,
+              "max": null,
+              "min": null,
+              "show": true
+            },
+            {
+              "format": "short",
+              "label": null,
+              "logBase": 1,
+              "max": null,
+              "min": null,
+              "show": true
+            }
+          ],
+          "yaxis": {
+            "align": false,
+            "alignLevel": null
+          }
+        },
+        {
+          "aliasColors": {},
+          "bars": false,
+          "dashLength": 10,
+          "dashes": false,
+          "datasource": "prometheus",
+          "fill": 1,
+          "gridPos": {
+            "h": 7,
+            "w": 24,
+            "x": 0,
+            "y": 84
+          },
+          "id": 31,
+          "legend": {
+            "avg": false,
+            "current": false,
+            "max": false,
+            "min": false,
+            "show": true,
+            "total": false,
+            "values": false
+          },
+          "lines": true,
+          "linewidth": 1,
+          "links": [],
+          "nullPointMode": "null",
+          "percentage": false,
+          "pointradius": 5,
+          "points": false,
+          "renderer": "flot",
+          "seriesOverrides": [],
+          "spaceLength": 10,
+          "stack": false,
+          "steppedLine": false,
+          "targets": [
+            {
+              "expr": "rate(kos_agent_attachment_status_latency_seconds_sum[1m]) / rate(kos_agent_attachment_status_latency_seconds_count[1m])",
+              "format": "time_series",
+              "intervalFactor": 2,
+              "legendFormat": "{{ node }} {{ err }}",
+              "refId": "A"
+            }
+          ],
+          "thresholds": [],
+          "timeFrom": null,
+          "timeRegions": [],
+          "timeShift": null,
+          "title": "Average Status Update From CA Latency",
+          "tooltip": {
+            "shared": true,
+            "sort": 0,
+            "value_type": "individual"
+          },
+          "type": "graph",
+          "xaxis": {
+            "buckets": null,
+            "mode": "time",
+            "name": null,
+            "show": true,
+            "values": []
+          },
+          "yaxes": [
+            {
+              "format": "short",
+              "label": null,
+              "logBase": 1,
+              "max": null,
+              "min": null,
+              "show": true
+            },
+            {
+              "format": "short",
+              "label": null,
+              "logBase": 1,
+              "max": null,
+              "min": null,
+              "show": true
+            }
+          ],
+          "yaxis": {
+            "align": false,
+            "alignLevel": null
+          }
+        },
+        {
+          "aliasColors": {},
+          "bars": false,
+          "dashLength": 10,
+          "dashes": false,
+          "datasource": "prometheus",
+          "fill": 1,
+          "gridPos": {
+            "h": 7,
+            "w": 24,
+            "x": 0,
+            "y": 91
           },
           "id": 5,
           "legend": {
@@ -3773,7 +4049,7 @@ data:
             "h": 7,
             "w": 24,
             "x": 0,
-            "y": 66
+            "y": 98
           },
           "id": 6,
           "legend": {
@@ -3858,7 +4134,7 @@ data:
             "h": 7,
             "w": 24,
             "x": 0,
-            "y": 73
+            "y": 105
           },
           "id": 12,
           "legend": {
@@ -3943,7 +4219,7 @@ data:
             "h": 7,
             "w": 24,
             "x": 0,
-            "y": 80
+            "y": 112
           },
           "id": 14,
           "legend": {
@@ -4028,7 +4304,7 @@ data:
             "h": 7,
             "w": 24,
             "x": 0,
-            "y": 87
+            "y": 119
           },
           "id": 15,
           "legend": {
@@ -4113,7 +4389,7 @@ data:
             "h": 7,
             "w": 24,
             "x": 0,
-            "y": 94
+            "y": 126
           },
           "id": 16,
           "legend": {
@@ -4198,7 +4474,7 @@ data:
             "h": 7,
             "w": 24,
             "x": 0,
-            "y": 101
+            "y": 133
           },
           "id": 17,
           "legend": {
@@ -4283,7 +4559,7 @@ data:
             "h": 7,
             "w": 24,
             "x": 0,
-            "y": 108
+            "y": 140
           },
           "id": 7,
           "legend": {
@@ -4382,7 +4658,7 @@ data:
             "h": 7,
             "w": 24,
             "x": 0,
-            "y": 115
+            "y": 147
           },
           "id": 18,
           "legend": {
@@ -4467,7 +4743,7 @@ data:
             "h": 7,
             "w": 24,
             "x": 0,
-            "y": 122
+            "y": 154
           },
           "id": 19,
           "legend": {
@@ -4581,7 +4857,7 @@ data:
       "timezone": "",
       "title": "KOS Internals",
       "uid": "39Dk0_Qik",
-      "version": 3
+      "version": 4
     }
   kubernetes-apiservers.json: |
     {
@@ -4601,7 +4877,7 @@ data:
       "editable": true,
       "gnetId": null,
       "graphTooltip": 0,
-      "id": 2,
+      "id": 5,
       "links": [],
       "panels": [
         {
@@ -4650,13 +4926,6 @@ data:
               "refId": "A"
             },
             {
-              "expr": "sum(rate(apiserver_request_count{code=\"429\"}[1m])) by (instance)",
-              "format": "time_series",
-              "intervalFactor": 2,
-              "legendFormat": "{{ instance }} rejected",
-              "refId": "B"
-            },
-            {
               "expr": "sum(rate(apiserver_dropped_requests[1m])) by (instance)",
               "format": "time_series",
               "intervalFactor": 2,
@@ -4664,10 +4933,24 @@ data:
               "refId": "C"
             },
             {
-              "expr": "sum(rate(apiserver_request_count{code=~\"4..\",code!=\"429\"}[1m])) by (instance)",
+              "expr": "sum(rate(apiserver_request_count{code=\"429\"}[1m])) by (instance)",
               "format": "time_series",
               "intervalFactor": 2,
-              "legendFormat": "{{ instance }} 4(not 29)",
+              "legendFormat": "{{ instance }} 429",
+              "refId": "B"
+            },
+            {
+              "expr": "sum(rate(apiserver_request_count{code=\"404\"}[1m])) by (instance)",
+              "format": "time_series",
+              "intervalFactor": 2,
+              "legendFormat": "{{ instance }} 404",
+              "refId": "F"
+            },
+            {
+              "expr": "sum(rate(apiserver_request_count{code=~\"4..\",code!=\"429\",code!=\"404\"}[1m])) by (instance)",
+              "format": "time_series",
+              "intervalFactor": 2,
+              "legendFormat": "{{ instance }} 4other",
               "refId": "D"
             },
             {
