@@ -15,7 +15,7 @@
   "editable": true,
   "gnetId": null,
   "graphTooltip": 0,
-  "id": 2,
+  "id": 5,
   "links": [],
   "panels": [
     {
@@ -64,13 +64,6 @@
           "refId": "A"
         },
         {
-          "expr": "sum(rate(apiserver_request_count{code=\"429\"}[1m])) by (instance)",
-          "format": "time_series",
-          "intervalFactor": 2,
-          "legendFormat": "{{ instance }} rejected",
-          "refId": "B"
-        },
-        {
           "expr": "sum(rate(apiserver_dropped_requests[1m])) by (instance)",
           "format": "time_series",
           "intervalFactor": 2,
@@ -78,10 +71,24 @@
           "refId": "C"
         },
         {
-          "expr": "sum(rate(apiserver_request_count{code=~\"4..\",code!=\"429\"}[1m])) by (instance)",
+          "expr": "sum(rate(apiserver_request_count{code=\"429\"}[1m])) by (instance)",
           "format": "time_series",
           "intervalFactor": 2,
-          "legendFormat": "{{ instance }} 4(not 29)",
+          "legendFormat": "{{ instance }} 429",
+          "refId": "B"
+        },
+        {
+          "expr": "sum(rate(apiserver_request_count{code=\"404\"}[1m])) by (instance)",
+          "format": "time_series",
+          "intervalFactor": 2,
+          "legendFormat": "{{ instance }} 404",
+          "refId": "F"
+        },
+        {
+          "expr": "sum(rate(apiserver_request_count{code=~\"4..\",code!=\"429\",code!=\"404\"}[1m])) by (instance)",
+          "format": "time_series",
+          "intervalFactor": 2,
+          "legendFormat": "{{ instance }} 4other",
           "refId": "D"
         },
         {
