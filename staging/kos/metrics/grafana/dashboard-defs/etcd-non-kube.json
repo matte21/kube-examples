@@ -16,7 +16,7 @@
   "editable": true,
   "gnetId": 3070,
   "graphTooltip": 0,
-  "id": 9,
+  "id": 2,
   "links": [],
   "panels": [
     {
@@ -1531,10 +1531,10 @@
       "steppedLine": false,
       "targets": [
         {
-          "expr": "sum(rate(container_cpu_usage_seconds_total{name=~\".*etcd.*\",name!~\".*etcd-operator.*\"}[1m])) by (pod_name)",
+          "expr": "sum(rate(container_cpu_usage_seconds_total{name=~\".*etcd.*\",name!~\".*etcd-operator.*\"}[1m])) by (pod_name,container_label_io_kubernetes_pod_name)",
           "format": "time_series",
           "intervalFactor": 2,
-          "legendFormat": "{{ pod_name }}",
+          "legendFormat": "{{ pod_name }} {{ container_label_io_kubernetes_pod_name }}",
           "refId": "A"
         }
       ],
@@ -2096,5 +2096,5 @@
   "timezone": "utc",
   "title": "Non-Kubernetes Etcd by Prometheus",
   "uid": "jsBg9ywiz",
-  "version": 2
+  "version": 1
 }
