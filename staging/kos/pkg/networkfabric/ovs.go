@@ -29,11 +29,26 @@ import (
 	"time"
 )
 
+//! Iteration 1
+// * hardcode ovs-vsctl with a constant
+// * hardcode ovs-ofctl with a constant
+// * make all ovs-vsctl commands use --db=tcp:ip:port
+// * make all ovs-ofctl commands use tcp:ip:port
+// * on the host: delete all bridges. Set the manager to the address you're using in the code
+// * test that it persists
+
+//! Iteration 2
+// TODO switch to registering factories of fabrics instead of fabrics
+// TODO pass ovs-vsctl port nbr with an invocation argument to the container
+
+//! Iteration 3
+// TODO Make generation of ofport random
+
 const (
 	ovs = "ovs"
 
 	// time to wait after a failure before performing the needed clean up
-	cleanupDelay = 1 * time.Second
+	cleanupDelay time.Duration = 1 * time.Second
 
 	// string templates for regexps used to parse the OpenFlow flows
 	decNbrRegexpStr = "[0-9]+"
@@ -57,12 +72,21 @@ const (
 	// interfaces contain: use it to identify such flows
 	remoteFlowsFingerprint = "NXM_NX_TUN_IPV4_DST"
 	arpFlowsFingerprint    = "arp"
+
+	// TODO add comments
+	localhost = "127.0.0.1"
+
+	// TODO add comments
+	ovsdbTCPPort    uint16 = 6640
+	bridgeOFTCPPort uint16 = 6653
 )
 
 type ovsFabric struct {
 	bridge                string
 	vtep                  string
 	vtepOFport            uint16
+	ovsdbTCPPort          uint16
+	bridgeOFTCPPort       uint16
 	flowParsingKit        *regexpKit
 	lockedVNIIPPairsMutex sync.Mutex
 	lockedVNIIPPairs      map[vniAndIP]struct{}
@@ -87,7 +111,7 @@ type vniAndIP struct {
 }
 
 func init() {
-	if f, err := NewOvSFabric("kos"); err != nil {
+	if f, err := NewOvSFabric("kos", ovsdbTCPPort); err != nil {
 		panic(fmt.Sprintf("failed to create OvS network fabric: %s", err.Error()))
 	} else {
 		registerFabric(ovs, f)
@@ -96,16 +120,20 @@ func init() {
 
 // NewOvSFabric returns a network fabric for creating local and remote interfaces
 // based on Openvswitch. It creates its own OvS bridge with name bridge.
-func NewOvSFabric(bridge string) (*ovsFabric, error) {
+func NewOvSFabric(bridge string, ovsdbTCPPort uint16) (*ovsFabric, error) {
 	f := &ovsFabric{
 		lockedVNIIPPairs: make(map[vniAndIP]struct{}),
+		ovsdbTCPPort:     ovsdbTCPPort,
 	}
+
 	f.initFlowsParsingKit()
 	glog.V(6).Infof("Initialized bridge %s flows parsing kit", bridge)
+
 	if err := f.initBridge(bridge); err != nil {
 		return nil, err
 	}
 	glog.V(2).Infof("Initialized bridge %s", bridge)
+
 	return f, nil
 }
 
@@ -121,7 +149,6 @@ func (f *ovsFabric) CreateLocalIfc(ifc LocalNetIfc) (err error) {
 	defer func() {
 		if err != nil {
 			f.unlockVNIIPPair(ifc.VNI, ifc.GuestIP)
-			glog.V(5).Infof("Unlocked IP %s in VNI %#x", ifc.GuestIP, ifc.VNI)
 		}
 	}()
 
@@ -303,12 +330,16 @@ func (f *ovsFabric) initFlowsParsingKit() {
 
 func (f *ovsFabric) initBridge(name string) error {
 	f.bridge = name
-	f.vtep = "vtep"
-
 	if err := f.createBridge(); err != nil {
 		return err
 	}
 
+	f.bridgeOFTCPPort = bridgeOFTCPPort
+	if err := f.bindBridgeToTCPPortForOF(); err != nil {
+		return err
+	}
+
+	f.vtep = "vtep"
 	if err := f.addVTEP(); err != nil {
 		return err
 	}
@@ -336,6 +367,35 @@ func (f *ovsFabric) createBridge() error {
 			string(out))
 	}
 	glog.V(4).Infof("Created OvS bridge %s", f.bridge)
+
+	return nil
+}
+
+// func (f *ovsFabric) getOFTCPPort() (uint16, bool, error) {
+// 	getOFTCPPort := f.newGetOFTCPPortCmd()
+
+// 	out, err := getOFTCPPort.CombinedOutput()
+// 	if err != nil {
+// 		return 0, false, fmt.Errorf("failed to retrieve the TCP port bridge %s is listening on for OpenFlow messages: %s: %s",
+// 			f.bridge,
+// 			err.Error(),
+// 			string(out))
+// 	}
+
+// 	return parseGetOFTCPPortOutput(out)
+// }
+
+func (f *ovsFabric) bindBridgeToTCPPortForOF() error {
+	bindBridgeToTCPPortForOF := f.newBindBridgeToTCPPortForOFCmd()
+
+	out, err := bindBridgeToTCPPortForOF.CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("failed to make bridge %s listen on TCP port %d for OpenFlow messages: %s: %s",
+			f.bridge,
+			f.bridgeOFTCPPort,
+			err.Error(),
+			string(out))
+	}
 
 	return nil
 }
@@ -880,6 +940,7 @@ func (f *ovsFabric) newCreateBridgeCmd() *exec.Cmd {
 	// because it's the first one to support bundling flows in a single transaction
 	// TODO do something better than just hardcoding all the protocols
 	return exec.Command("ovs-vsctl",
+		"--db=tcp:"+localhost+":"+strconv.Itoa(int(f.ovsdbTCPPort)),
 		"--may-exist",
 		"add-br",
 		f.bridge,
@@ -890,8 +951,17 @@ func (f *ovsFabric) newCreateBridgeCmd() *exec.Cmd {
 		"protocols=OpenFlow10,OpenFlow11,OpenFlow12,OpenFlow13,OpenFlow14,OpenFlow15")
 }
 
+func (f *ovsFabric) newBindBridgeToTCPPortForOFCmd() *exec.Cmd {
+	return exec.Command("ovs-vsctl",
+		"--db=tcp:"+localhost+":"+strconv.Itoa(int(f.ovsdbTCPPort)),
+		"set-controller",
+		f.bridge,
+		"ptcp:"+strconv.Itoa(int(f.bridgeOFTCPPort))+":"+localhost)
+}
+
 func (f *ovsFabric) newAddVTEPCmd() *exec.Cmd {
 	return exec.Command("ovs-vsctl",
+		"--db=tcp:"+localhost+":"+strconv.Itoa(int(f.ovsdbTCPPort)),
 		"--may-exist",
 		"add-port",
 		f.bridge,
@@ -907,6 +977,7 @@ func (f *ovsFabric) newAddVTEPCmd() *exec.Cmd {
 
 func (f *ovsFabric) newGetIfcOFportCmd(ifc string) *exec.Cmd {
 	return exec.Command("ovs-vsctl",
+		"--db=tcp:"+localhost+":"+strconv.Itoa(int(f.ovsdbTCPPort)),
 		"get",
 		"interface",
 		ifc,
@@ -916,6 +987,7 @@ func (f *ovsFabric) newGetIfcOFportCmd(ifc string) *exec.Cmd {
 
 func (f *ovsFabric) newCreateIfcCmd(ifc string, mac net.HardwareAddr) *exec.Cmd {
 	return exec.Command("ovs-vsctl",
+		"--db=tcp:"+localhost+":"+strconv.Itoa(int(f.ovsdbTCPPort)),
 		"add-port",
 		f.bridge,
 		ifc,
@@ -929,6 +1001,7 @@ func (f *ovsFabric) newCreateIfcCmd(ifc string, mac net.HardwareAddr) *exec.Cmd 
 
 func (f *ovsFabric) newDeleteBridgePortCmd(ifc string) *exec.Cmd {
 	return exec.Command("ovs-vsctl",
+		"--db=tcp:"+localhost+":"+strconv.Itoa(int(f.ovsdbTCPPort)),
 		"del-port",
 		f.bridge,
 		ifc)
@@ -937,7 +1010,7 @@ func (f *ovsFabric) newDeleteBridgePortCmd(ifc string) *exec.Cmd {
 func (f *ovsFabric) newAddFlowsCmd(flows ...string) *exec.Cmd {
 	// the --bundle flag makes the addition of the flows transactional, but it
 	// works only if the flows are in a file
-	cmd := exec.Command("ovs-ofctl", "--bundle", "add-flows", f.bridge, "-")
+	cmd := exec.Command("ovs-ofctl", "--bundle", "add-flows", "tcp:"+localhost+":"+strconv.Itoa(int(f.bridgeOFTCPPort)), "-")
 	cmd.Stdin = strings.NewReader(strings.Join(flows, "\n") + "\n")
 	return cmd
 }
@@ -945,7 +1018,7 @@ func (f *ovsFabric) newAddFlowsCmd(flows ...string) *exec.Cmd {
 func (f *ovsFabric) newDelFlowsCmd(flows ...string) *exec.Cmd {
 	// the --bundle flag makes the deletion of the flows transactional, but it
 	// works only if the flows are in a file
-	cmd := exec.Command("ovs-ofctl", "--bundle", "del-flows", f.bridge, "-")
+	cmd := exec.Command("ovs-ofctl", "--bundle", "del-flows", "tcp:"+localhost+":"+strconv.Itoa(int(f.bridgeOFTCPPort)), "-")
 	cmd.Stdin = strings.NewReader(strings.Join(flows, "\n") + "\n")
 	return cmd
 }
@@ -953,11 +1026,12 @@ func (f *ovsFabric) newDelFlowsCmd(flows ...string) *exec.Cmd {
 func (f *ovsFabric) newGetFlowsCmd() *exec.Cmd {
 	// TODO maybe we can do better: some options might filter out the flows we
 	// do not need
-	return exec.Command("ovs-ofctl", "dump-flows", f.bridge)
+	return exec.Command("ovs-ofctl", "dump-flows", "tcp:"+localhost+":"+strconv.Itoa(int(f.bridgeOFTCPPort)))
 }
 
 func (f *ovsFabric) newListOFportsAndIfcNamesCmd() *exec.Cmd {
 	return exec.Command("ovs-vsctl",
+		"--db=tcp:"+localhost+":"+strconv.Itoa(int(f.ovsdbTCPPort)),
 		"-f",
 		"table",
 		"--no-heading",

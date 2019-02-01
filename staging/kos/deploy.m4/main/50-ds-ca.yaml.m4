@@ -24,8 +24,6 @@ spec:
         image: DOCKER_PREFIX/kos-connection-agent:latest
         imagePullPolicy: Always
         volumeMounts:
-        - name: ovs-socks-dir
-          mountPath: /var/run/openvswitch
         - name: netns-dir
           mountPath: /var/run/netns
           mountPropagation: Bidirectional
@@ -48,10 +46,6 @@ spec:
         - -allowed-programs=/usr/local/kos/bin/TestByPing,/usr/local/kos/bin/RemoveNetNS
         - -netfabric=ovs
       volumes:
-      - name: ovs-socks-dir
-        hostPath:
-          path: /var/run/openvswitch
-          type: Directory
       - name: netns-dir
         hostPath:
           path: /var/run/netns
