@@ -1,5 +1,5 @@
 apiVersion: apps/v1
-kind: ReplicaSet
+kind: Deployment
 metadata:
   name: ipam-controller
   namespace: example-com
@@ -7,11 +7,11 @@ spec:
   replicas: 1
   selector:
     matchLabels:
-      ipam-controller: "true"
+      app: ipam-controller
   template:
     metadata:
       labels:
-        ipam-controller: "true"
+        app: ipam-controller
       annotations:
         prometheus.io/scrape: "true"
         prometheus.io/port: "9295"

@@ -6,11 +6,11 @@ metadata:
 spec:
   selector:
     matchLabels:
-      connection-agent: "true"
+      app: connection-agent
   template:
     metadata:
       labels:
-        connection-agent: "true"
+        app: connection-agent
       annotations:
         prometheus.io/sample: "true"
         prometheus.io/port: "9294"
