@@ -1,5 +1,5 @@
 apiVersion: apps/v1
-kind: ReplicaSet
+kind: Deployment
 metadata:
   name: network-apiserver
   namespace: example-com
@@ -7,11 +7,11 @@ spec:
   replicas: 2
   selector:
     matchLabels:
-      network-apiserver: "true"
+      app: network-apiserver
   template:
     metadata:
       labels:
-        network-apiserver: "true"
+        app: network-apiserver
     spec:
       serviceAccountName: network-apiserver
       nodeSelector:
