@@ -2703,7 +2703,7 @@ data:
       "editable": true,
       "gnetId": null,
       "graphTooltip": 0,
-      "id": 4,
+      "id": 3,
       "links": [],
       "panels": [
         {
@@ -3367,7 +3367,7 @@ data:
           "steppedLine": false,
           "targets": [
             {
-              "expr": "rate(kos_ipam_attachment_update_latency_seconds_sum[1m])",
+              "expr": "sum(rate(kos_ipam_attachment_update_latency_seconds_sum[1m])) without (err, statusErr)",
               "format": "time_series",
               "intervalFactor": 1,
               "legendFormat": "attachments @ {{ instance }}",
@@ -3462,7 +3462,7 @@ data:
               "expr": "histogram_quantile(0.99, rate(kos_ipam_attachment_update_latency_seconds_bucket[1m]))",
               "format": "time_series",
               "intervalFactor": 1,
-              "legendFormat": "{{ instance }} status update",
+              "legendFormat": "{{ instance }} status update {{ statusErr }} {{ err }}",
               "refId": "A"
             },
             {
@@ -3554,7 +3554,7 @@ data:
               "expr": "rate(kos_ipam_attachment_update_latency_seconds_count[1m])",
               "format": "time_series",
               "intervalFactor": 1,
-              "legendFormat": "{{ instance }} status update",
+              "legendFormat": "{{ instance }} status update {{ statusErr }} {{ err }}",
               "refId": "A"
             },
             {
@@ -3646,7 +3646,7 @@ data:
               "expr": "rate(kos_ipam_attachment_update_latency_seconds_sum[1m]) / rate(kos_ipam_attachment_update_latency_seconds_count[1m])",
               "format": "time_series",
               "intervalFactor": 1,
-              "legendFormat": "{{ instance }} status update",
+              "legendFormat": "{{ instance }} status update {{ statusErr }} {{ err }}",
               "refId": "A"
             },
             {
@@ -3823,7 +3823,7 @@ data:
               "expr": "histogram_quantile(0.99, rate(kos_agent_attachment_status_latency_seconds_bucket[1m]))",
               "format": "time_series",
               "intervalFactor": 2,
-              "legendFormat": "{{ node }} {{ err }}",
+              "legendFormat": "{{ node }} {{ statusErr }} {{ err }}",
               "refId": "A"
             }
           ],
@@ -3908,7 +3908,7 @@ data:
               "expr": "rate(kos_agent_attachment_status_latency_seconds_sum[1m]) / rate(kos_agent_attachment_status_latency_seconds_count[1m])",
               "format": "time_series",
               "intervalFactor": 2,
-              "legendFormat": "{{ node }} {{ err }}",
+              "legendFormat": "{{ node }} {{ statusErr }} {{ err }}",
               "refId": "A"
             }
           ],
@@ -4857,7 +4857,7 @@ data:
       "timezone": "",
       "title": "KOS Internals",
       "uid": "39Dk0_Qik",
-      "version": 4
+      "version": 2
     }
   kubernetes-apiservers.json: |
     {

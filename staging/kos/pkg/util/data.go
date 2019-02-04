@@ -45,3 +45,16 @@ func MakeIPv4FromUint32(n uint32) net.IP {
 	return ip
 }
 
+type SliceOfString []string
+
+func (x SliceOfString) Equal(y SliceOfString) bool {
+	if len(x) != len(y) {
+		return false
+	}
+	for i, xi := range x {
+		if xi != y[i] {
+			return false
+		}
+	}
+	return true
+}

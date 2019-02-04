@@ -86,7 +86,7 @@ type IPAMController struct {
 	attachmentCreateToAddressHistogram prometheus.Histogram
 
 	// round trip time to update attachment status
-	attachmentUpdateHistogram prometheus.Histogram
+	attachmentUpdateHistograms *prometheus.HistogramVec
 
 	// Kind of anticipation use (0, 1, or 2)
 	anticipationUsedHistogram prometheus.Histogram
@@ -153,14 +153,15 @@ func NewIPAMController(netIfc kosclientv1a1.NetworkV1alpha1Interface,
 			Buckets:   []float64{-1, 0, 1, 2, 3, 4, 6, 8, 12, 16, 24, 32, 64},
 		})
 
-	attachmentUpdateHistogram := prometheus.NewHistogram(
+	attachmentUpdateHistograms := prometheus.NewHistogramVec(
 		prometheus.HistogramOpts{
 			Namespace: MetricsNamespace,
 			Subsystem: MetricsSubsystem,
 			Name:      "attachment_update_latency_seconds",
 			Help:      "Round trip latency to set attachment address, in seconds",
 			Buckets:   []float64{-0.125, 0, 0.125, 0.25, 0.5, 1, 2, 4, 8, 16, 32, 64},
-		})
+		},
+		[]string{"statusErr", "err"})
 
 	anticipationUsedHistogram := prometheus.NewHistogram(
 		prometheus.HistogramOpts{
@@ -180,7 +181,7 @@ func NewIPAMController(netIfc kosclientv1a1.NetworkV1alpha1Interface,
 			Buckets:   []float64{0, 1},
 		})
 
-	prometheus.MustRegister(attachmentCreateToLockHistogram, lockOpHistograms, attachmentCreateToAddressHistogram, attachmentUpdateHistogram, anticipationUsedHistogram, statusUsedHistogram)
+	prometheus.MustRegister(attachmentCreateToLockHistogram, lockOpHistograms, attachmentCreateToAddressHistogram, attachmentUpdateHistograms, anticipationUsedHistogram, statusUsedHistogram)
 
 	ctlr = &IPAMController{
 		netIfc:                             netIfc,
@@ -197,7 +198,7 @@ func NewIPAMController(netIfc kosclientv1a1.NetworkV1alpha1Interface,
 		attachmentCreateToLockHistogram:    attachmentCreateToLockHistogram,
 		lockOpHistograms:                   lockOpHistograms,
 		attachmentCreateToAddressHistogram: attachmentCreateToAddressHistogram,
-		attachmentUpdateHistogram:          attachmentUpdateHistogram,
+		attachmentUpdateHistograms:         attachmentUpdateHistograms,
 		anticipationUsedHistogram:          anticipationUsedHistogram,
 		statusUsedHistogram:                statusUsedHistogram,
 	}
@@ -401,7 +402,7 @@ func (ctlr *IPAMController) processNetworkAttachment(ns, name string) error {
 		return nil
 	}
 	nadat := ctlr.getNetworkAttachmentData(ns, name, att != nil)
-	subnetName, subnetRV, desiredVNI, desiredBaseU, desiredPrefixLen, lockInStatus, lockForStatus, err, ok := ctlr.analyzeAndRelease(ns, name, att, nadat)
+	subnetName, subnetRV, desiredVNI, desiredBaseU, desiredPrefixLen, lockInStatus, lockForStatus, statusErrs, err, ok := ctlr.analyzeAndRelease(ns, name, att, nadat)
 	if err != nil || !ok {
 		return err
 	}
@@ -429,7 +430,8 @@ func (ctlr *IPAMController) processNetworkAttachment(ns, name string) error {
 			ctlr.anticipationUsedHistogram.Observe(0)
 		}
 	}()
-	if lockForStatus.Obj != nil {
+	if len(statusErrs) > 0 {
+	} else if lockForStatus.Obj != nil {
 		ipForStatus = lockForStatus.GetIP()
 		if ipForStatus.Equal(nadat.anticipatedIPv4) {
 			anticipationUsed = true
@@ -445,10 +447,10 @@ func (ctlr *IPAMController) processNetworkAttachment(ns, name string) error {
 			return err
 		}
 	}
-	return ctlr.setIPInStatus(ns, name, att, nadat, subnetRV, lockForStatus, ipForStatus)
+	return ctlr.updateNAStatus(ns, name, att, nadat, statusErrs, subnetRV, lockForStatus, ipForStatus)
 }
 
-func (ctlr *IPAMController) analyzeAndRelease(ns, name string, att *netv1a1.NetworkAttachment, nadat *NetworkAttachmentData) (subnetName, subnetRV string, desiredVNI, desiredBaseU, desiredLastU uint32, lockInStatus, lockForStatus ParsedLock, err error, ok bool) {
+func (ctlr *IPAMController) analyzeAndRelease(ns, name string, att *netv1a1.NetworkAttachment, nadat *NetworkAttachmentData) (subnetName, subnetRV string, desiredVNI, desiredBaseU, desiredLastU uint32, lockInStatus, lockForStatus ParsedLock, statusErrs []string, err error, ok bool) {
 	statusLockUID := "<none>"
 	ipInStatus := ""
 	attUID := "."
@@ -475,14 +477,18 @@ func (ctlr *IPAMController) analyzeAndRelease(ns, name string, att *netv1a1.Netw
 			if err != nil {
 				glog.Warningf("NetworkAttachment %s/%s references subnet %s, which has malformed Spec.IPv4 %q: %s\n", ns, name, subnetName, subnet.Spec.IPv4, err.Error())
 				// Subnet update should trigger reconsideration of this attachment
+				statusErrs = []string{fmt.Sprintf("Subnet %s has malformed IPv4 CIDR block (%s)", subnetName, subnet.Spec.IPv4)}
 				err = nil
+				ok = true
 				return
 			}
 			desiredBaseU, desiredLastU = IPNetToBoundsU(ipNet)
 		} else {
 			glog.Errorf("NetworkAttachment %s/%s references Subnet %s, which does not exist now\n", ns, name, subnetName)
 			// This attachment will be requeued upon notification of subnet creation
+			statusErrs = []string{fmt.Sprintf("Subnet %s does not exist", subnetName)}
 			err = nil
+			ok = true
 			return
 		}
 	}
@@ -598,7 +604,7 @@ func (ctlr *IPAMController) deleteIPLockObject(parsed ParsedLock) error {
 	tBefore := time.Now()
 	err := lockOps.Delete(parsed.name, &delOpts)
 	tAfter := time.Now()
-	ctlr.lockOpHistograms.With(prometheus.Labels{"op": "delete", "err": strconv.FormatBool(err != nil)}).Observe(tAfter.Sub(tBefore).Seconds())
+	ctlr.lockOpHistograms.With(prometheus.Labels{"op": "delete", "err": FormatErrVal(err != nil)}).Observe(tAfter.Sub(tBefore).Seconds())
 	if err == nil {
 		glog.V(4).Infof("Deleted IPLock %s/%s=%s\n", parsed.ns, parsed.name, string(parsed.UID))
 	} else if k8serrors.IsNotFound(err) || k8serrors.IsGone(err) {
@@ -648,7 +654,7 @@ func (ctlr *IPAMController) pickAndLockAddress(ns, name string, att *netv1a1.Net
 		tBefore := time.Now()
 		ipl2, err = lockOps.Create(ipl)
 		tAfter := time.Now()
-		ctlr.lockOpHistograms.With(prometheus.Labels{"op": "create", "err": strconv.FormatBool(err != nil)}).Observe(tAfter.Sub(tBefore).Seconds())
+		ctlr.lockOpHistograms.With(prometheus.Labels{"op": "create", "err": FormatErrVal(err != nil)}).Observe(tAfter.Sub(tBefore).Seconds())
 		if err == nil {
 			glog.V(4).Infof("Locked IP address %s for %s/%s=%s, lockName=%s, lockUID=%s\n", ipForStatus, ns, name, string(att.UID), lockName, string(ipl2.UID))
 			ctlr.attachmentCreateToLockHistogram.Observe(ipl2.CreationTimestamp.Sub(att.CreationTimestamp.Time).Seconds())
@@ -699,26 +705,35 @@ func (ctlr *IPAMController) pickAndLockAddress(ns, name string, att *netv1a1.Net
 	return
 }
 
-func (ctlr *IPAMController) setIPInStatus(ns, name string, att *netv1a1.NetworkAttachment, nadat *NetworkAttachmentData, subnetRV string, lockForStatus ParsedLock, ipForStatus gonet.IP) error {
+func (ctlr *IPAMController) updateNAStatus(ns, name string, att *netv1a1.NetworkAttachment, nadat *NetworkAttachmentData, statusErrs []string, subnetRV string, lockForStatus ParsedLock, ipForStatus gonet.IP) error {
 	att2 := att.DeepCopy()
+	att2.Status.Errors.IPAM = statusErrs
 	att2.Status.LockUID = string(lockForStatus.UID)
 	att2.Status.AddressVNI = lockForStatus.VNI
-	att2.Status.IPv4 = ipForStatus.String()
+	if ipForStatus == nil {
+		att2.Status.IPv4 = ""
+	} else {
+		att2.Status.IPv4 = ipForStatus.String()
+	}
 	attachmentOps := ctlr.netIfc.NetworkAttachments(ns)
 	tBefore := time.Now()
 	att3, err := attachmentOps.Update(att2)
 	tAfter := time.Now()
-	ctlr.attachmentUpdateHistogram.Observe(tAfter.Sub(tBefore).Seconds())
+	ctlr.attachmentUpdateHistograms.With(prometheus.Labels{"statusErr": FormatErrVal(len(statusErrs) > 0), "err": FormatErrVal(err != nil)}).Observe(tAfter.Sub(tBefore).Seconds())
 	if err == nil {
 		t1 := att.CreationTimestamp.Time
 		t2 := tAfter.Truncate(time.Second)
 		deltaS := t2.Sub(t1).Seconds()
 		ctlr.attachmentCreateToAddressHistogram.Observe(deltaS)
-		glog.V(4).Infof("Recorded locked address %s in status of %s/%s, old ResourceVersion=%s, new ResourceVersion=%s, subnetRV=%s\n", ipForStatus, ns, name, att.ResourceVersion, att3.ResourceVersion, subnetRV)
-		nadat.anticipatingResourceVersion = att.ResourceVersion
-		nadat.anticipatedResourceVersion = att3.ResourceVersion
-		nadat.anticipationSubnetRV = subnetRV
-		nadat.anticipatedIPv4 = ipForStatus
+		if len(statusErrs) > 0 {
+			glog.V(4).Infof("Recorded errors %v in status of %s/%s, old ResourceVersion=%s, new ResourceVersion=%s\n", statusErrs, ns, name, att.ResourceVersion, att3.ResourceVersion)
+		} else {
+			glog.V(4).Infof("Recorded locked address %s in status of %s/%s, old ResourceVersion=%s, new ResourceVersion=%s, subnetRV=%s\n", ipForStatus, ns, name, att.ResourceVersion, att3.ResourceVersion, subnetRV)
+			nadat.anticipatingResourceVersion = att.ResourceVersion
+			nadat.anticipatedResourceVersion = att3.ResourceVersion
+			nadat.anticipationSubnetRV = subnetRV
+			nadat.anticipatedIPv4 = ipForStatus
+		}
 		return nil
 	}
 	if k8serrors.IsNotFound(err) {
@@ -973,4 +988,11 @@ func (list ParsedLockList) RemFunc(elt ParsedLock) (sans ParsedLockList, diff bo
 		}
 	}
 	return list, false
+}
+
+func FormatErrVal(err bool) string {
+	if err {
+		return "err"
+	}
+	return "ok"
 }
