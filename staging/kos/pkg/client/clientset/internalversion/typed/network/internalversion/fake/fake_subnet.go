@@ -62,7 +62,7 @@ func (c *FakeSubnets) List(opts v1.ListOptions) (result *network.SubnetList, err
 	if label == nil {
 		label = labels.Everything()
 	}
-	list := &network.SubnetList{}
+	list := &network.SubnetList{ListMeta: obj.(*network.SubnetList).ListMeta}
 	for _, item := range obj.(*network.SubnetList).Items {
 		if label.Matches(labels.Set(item.Labels)) {
 			list.Items = append(list.Items, item)

@@ -59,7 +59,7 @@ func addKnownTypes(scheme *runtime.Scheme) error {
 }
 
 func addFieldConversions(scheme *runtime.Scheme) error {
-	err := scheme.AddFieldLabelConversionFunc(SchemeGroupVersion.String(), "NetworkAttachment", convertNetworkAttachmentFields)
+	err := scheme.AddFieldLabelConversionFunc(SchemeGroupVersion.WithKind("NetworkAttachment"), convertNetworkAttachmentFields)
 	if err != nil {
 		return err
 	}

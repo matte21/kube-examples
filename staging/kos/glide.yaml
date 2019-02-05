@@ -1,34 +1,27 @@
 package: k8s.io/examples/staging/kos
 import:
+- package: github.com/go-openapi/spec
+  version: ~0.17.0
 - package: github.com/golang/glog
-
-# Force a good enough version of json-iterator/go.
-# k8s.io/apimachinery 1.10 needs
-# f2b4162afba35581b6d4a50d3b8f34e33c144682 (1.1.5) or later, but
-# something somewhere in here would make an earlier version get
-# chosen.
-- package: github.com/json-iterator/go
-  version: ~1.1.5
-- package: github.com/onsi/ginkgo
-  version: ^1.6
-- package: github.com/onsi/gomega
-  version: ^1.4
+- package: github.com/prometheus/client_golang
+  version: ^0.9.2
+  subpackages:
+  - api
+  - prometheus
+  - prometheus/promhttp
 - package: github.com/spf13/cobra
-  version: ~0.0.3
-
-# Force a good enough version of pflag, because
-# cobra needs something better than the ancient version
-# that comes in due to client-go.
-- package: github.com/spf13/pflag
-  version: ~1.0.1
+  version: ^0.0.3
 - package: github.com/wangjia184/sortedset
+- package: k8s.io/api
+  version: release-1.12
+  subpackages:
+  - core/v1
 - package: k8s.io/apimachinery
-  version: release-1.10
+  version: kubernetes-1.12.5
   subpackages:
   - pkg/api/errors
-  - pkg/apimachinery/announced
-  - pkg/apimachinery/registered
   - pkg/apis/meta/v1
+  - pkg/conversion
   - pkg/fields
   - pkg/labels
   - pkg/runtime
@@ -36,13 +29,16 @@ import:
   - pkg/runtime/serializer
   - pkg/types
   - pkg/util/errors
+  - pkg/util/runtime
   - pkg/util/validation/field
+  - pkg/util/wait
   - pkg/version
   - pkg/watch
+- package: k8s.io/code-generator
+  version: release-1.12
 - package: k8s.io/apiserver
-  version: release-1.10
+  version: release-1.12
   subpackages:
-  - pkg/admission
   - pkg/endpoints/request
   - pkg/registry/generic
   - pkg/registry/generic/registry
@@ -51,18 +47,28 @@ import:
   - pkg/server/options
   - pkg/storage
   - pkg/storage/names
+  - pkg/util/logs
 - package: k8s.io/client-go
-  version: ~7.0.0
+  version: release-9.0
   subpackages:
   - discovery
   - discovery/fake
+  - kubernetes
+  - plugin/pkg/client/auth/oidc
   - rest
   - testing
   - tools/cache
+  - tools/clientcmd
   - util/flowcontrol
-- package: k8s.io/code-generator
-  version: release-1.10
+  - util/workqueue
+- package: k8s.io/kube-openapi
+  subpackages:
+  - pkg/common
 - package: k8s.io/gengo
-- package: github.com/prometheus/client_golang
-  version: ~0.9.2
-- package: golang.org/x/oauth2
+  subpackages:
+  - args
+testImport:
+- package: github.com/onsi/ginkgo
+  version: ^1.7.0
+- package: github.com/onsi/gomega
+  version: ^1.4.3

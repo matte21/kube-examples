@@ -62,7 +62,7 @@ func (c *FakeIPLocks) List(opts v1.ListOptions) (result *v1alpha1.IPLockList, er
 	if label == nil {
 		label = labels.Everything()
 	}
-	list := &v1alpha1.IPLockList{}
+	list := &v1alpha1.IPLockList{ListMeta: obj.(*v1alpha1.IPLockList).ListMeta}
 	for _, item := range obj.(*v1alpha1.IPLockList).Items {
 		if label.Matches(labels.Set(item.Labels)) {
 			list.Items = append(list.Items, item)
