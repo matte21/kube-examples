@@ -1195,7 +1195,7 @@ func RunThread(kClientset *kosclientset.Clientset, stopCh <-chan struct{}, work 
 			virtNet := &virtNets[work[iDelete%workLen].vnIndex]
 			slot := &virtNet.slots[work[iDelete%workLen].slotIndex]
 			natt := slot.close(virtNet.ID, theKubeNS)
-			if natt != nil {
+			tryDelete := func() bool {
 				ti0 := time.Now()
 				delopts := metav1.DeleteOptions{}
 				err := attachmentsDirect.Delete(natt.Name, &delopts)
@@ -1205,10 +1205,15 @@ func RunThread(kClientset *kosclientset.Clientset, stopCh <-chan struct{}, work 
 				if err != nil {
 					failedDeletes.Inc()
 					glog.Infof("Failed to delete NetworkAttachment: attachment=%s/%s, VNI=%06x, subnet=%s, node=%s, preDeleteTime=%s, ipv4=%s, err=%s\n", theKubeNS, natt.Name, virtNet.ID, natt.Spec.Subnet, natt.Spec.Node, ti0.Format(kosutil.RFC3339Milli), natt.Status.IPv4, err.Error())
+					return false
 				} else {
 					successfulDeletes.Inc()
 					glog.Infof("Deleted NetworkAttachment: attachment=%s/%s, VNI=%06x, subnet=%s, node=%s, preDeleteTime=%s, ipv4=%s\n", theKubeNS, natt.Name, virtNet.ID, natt.Spec.Subnet, natt.Spec.Node, ti0.Format(kosutil.RFC3339Milli), natt.Status.IPv4)
+					return true
 				}
+			}
+			if natt != nil {
+				withRetries(tryDelete, 100*time.Millisecond, 5*time.Second, stopCh)
 			}
 			slot.nextIndex += uint32(virtNet.size)
 			iDelete++
@@ -1265,4 +1270,21 @@ func saveProMetrics(config promapi.Config, outputDir string) {
 		return
 	}
 	glog.Warningf("Wrote metrics file: filename=%q\n", metricsFilename)
+}
+
+func withRetries(thunk func() bool, minWait, maxWait time.Duration, stopCh <-chan struct{}) bool {
+	wait := minWait
+	for !thunk() {
+		wc := time.After(wait)
+		select {
+		case <-stopCh:
+			return false
+		case <-wc:
+		}
+		wait = 2 * wait
+		if wait > maxWait {
+			wait = maxWait
+		}
+	}
+	return true
 }
