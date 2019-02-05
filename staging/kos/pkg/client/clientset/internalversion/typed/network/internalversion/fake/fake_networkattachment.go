@@ -62,7 +62,7 @@ func (c *FakeNetworkAttachments) List(opts v1.ListOptions) (result *network.Netw
 	if label == nil {
 		label = labels.Everything()
 	}
-	list := &network.NetworkAttachmentList{}
+	list := &network.NetworkAttachmentList{ListMeta: obj.(*network.NetworkAttachmentList).ListMeta}
 	for _, item := range obj.(*network.NetworkAttachmentList).Items {
 		if label.Matches(labels.Set(item.Labels)) {
 			list.Items = append(list.Items, item)

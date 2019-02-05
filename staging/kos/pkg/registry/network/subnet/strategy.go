@@ -17,6 +17,7 @@ limitations under the License.
 package subnet
 
 import (
+	"context"
 	"fmt"
 	"net"
 
@@ -28,7 +29,6 @@ import (
 	"k8s.io/apiserver/pkg/storage"
 	"k8s.io/apiserver/pkg/storage/names"
 
-	genericapirequest "k8s.io/apiserver/pkg/endpoints/request"
 	"k8s.io/apiserver/pkg/registry/rest"
 	"k8s.io/examples/staging/kos/pkg/apis/network"
 	informers "k8s.io/examples/staging/kos/pkg/client/informers/internalversion"
@@ -82,15 +82,15 @@ func (*subnetStrategy) NamespaceScoped() bool {
 	return true
 }
 
-func (*subnetStrategy) PrepareForCreate(ctx genericapirequest.Context, obj runtime.Object) {
+func (*subnetStrategy) PrepareForCreate(ctx context.Context, obj runtime.Object) {
 	subnet := obj.(*network.Subnet)
 	subnet.Status = network.SubnetStatus{}
 }
 
-func (*subnetStrategy) PrepareForUpdate(ctx genericapirequest.Context, obj, old runtime.Object) {
+func (*subnetStrategy) PrepareForUpdate(ctx context.Context, obj, old runtime.Object) {
 }
 
-func (s *subnetStrategy) Validate(ctx genericapirequest.Context, obj runtime.Object) field.ErrorList {
+func (s *subnetStrategy) Validate(ctx context.Context, obj runtime.Object) field.ErrorList {
 	var validationErrors field.ErrorList
 
 	thisSubnet := obj.(*network.Subnet)
@@ -151,7 +151,7 @@ func (*subnetStrategy) AllowUnconditionalUpdate() bool {
 func (*subnetStrategy) Canonicalize(obj runtime.Object) {
 }
 
-func (s *subnetStrategy) ValidateUpdate(ctx genericapirequest.Context, obj, old runtime.Object) field.ErrorList {
+func (s *subnetStrategy) ValidateUpdate(ctx context.Context, obj, old runtime.Object) field.ErrorList {
 	return s.Validate(ctx, obj)
 }
 

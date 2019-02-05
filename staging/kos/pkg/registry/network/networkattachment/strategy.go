@@ -17,6 +17,7 @@ limitations under the License.
 package networkattachment
 
 import (
+	"context"
 	"fmt"
 	"strconv"
 
@@ -28,7 +29,6 @@ import (
 	"k8s.io/apiserver/pkg/storage"
 	"k8s.io/apiserver/pkg/storage/names"
 
-	genericapirequest "k8s.io/apiserver/pkg/endpoints/request"
 	"k8s.io/apiserver/pkg/registry/rest"
 	"k8s.io/examples/staging/kos/pkg/apis/network"
 )
@@ -84,13 +84,13 @@ func (networkattachmentStrategy) NamespaceScoped() bool {
 	return true
 }
 
-func (networkattachmentStrategy) PrepareForCreate(ctx genericapirequest.Context, obj runtime.Object) {
+func (networkattachmentStrategy) PrepareForCreate(ctx context.Context, obj runtime.Object) {
 }
 
-func (networkattachmentStrategy) PrepareForUpdate(ctx genericapirequest.Context, obj, old runtime.Object) {
+func (networkattachmentStrategy) PrepareForUpdate(ctx context.Context, obj, old runtime.Object) {
 }
 
-func (networkattachmentStrategy) Validate(ctx genericapirequest.Context, obj runtime.Object) field.ErrorList {
+func (networkattachmentStrategy) Validate(ctx context.Context, obj runtime.Object) field.ErrorList {
 	return field.ErrorList{}
 }
 
@@ -105,6 +105,6 @@ func (networkattachmentStrategy) AllowUnconditionalUpdate() bool {
 func (networkattachmentStrategy) Canonicalize(obj runtime.Object) {
 }
 
-func (networkattachmentStrategy) ValidateUpdate(ctx genericapirequest.Context, obj, old runtime.Object) field.ErrorList {
+func (networkattachmentStrategy) ValidateUpdate(ctx context.Context, obj, old runtime.Object) field.ErrorList {
 	return field.ErrorList{}
 }

@@ -17,8 +17,6 @@ limitations under the License.
 package apiserver
 
 import (
-	"k8s.io/apimachinery/pkg/apimachinery/announced"
-	"k8s.io/apimachinery/pkg/apimachinery/registered"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
@@ -29,7 +27,6 @@ import (
 
 	"k8s.io/examples/staging/kos/pkg/apis/network"
 	"k8s.io/examples/staging/kos/pkg/apis/network/install"
-	"k8s.io/examples/staging/kos/pkg/apis/network/v1alpha1"
 	networkinformers "k8s.io/examples/staging/kos/pkg/client/informers/internalversion"
 	networkregistry "k8s.io/examples/staging/kos/pkg/registry"
 	iplockstorage "k8s.io/examples/staging/kos/pkg/registry/network/iplock"
@@ -38,14 +35,12 @@ import (
 )
 
 var (
-	groupFactoryRegistry = make(announced.APIGroupFactoryRegistry)
-	registry             = registered.NewOrDie("")
 	Scheme               = runtime.NewScheme()
 	Codecs               = serializer.NewCodecFactory(Scheme)
 )
 
 func init() {
-	install.Install(groupFactoryRegistry, registry, Scheme)
+	install.Install(Scheme)
 
 	// we need to add the options to empty v1
 	// TODO fix the server code to avoid this
@@ -104,7 +99,7 @@ func (cfg *Config) Complete() CompletedConfig {
 
 // New returns a new instance of NetworkAPIServer from the given config.
 func (c completedConfig) New() (*NetworkAPIServer, error) {
-	genericServer, err := c.GenericConfig.New("network-apiserver", genericapiserver.EmptyDelegate)
+	genericServer, err := c.GenericConfig.New("network-apiserver", genericapiserver.NewEmptyDelegate())
 	if err != nil {
 		return nil, err
 	}
@@ -113,12 +108,13 @@ func (c completedConfig) New() (*NetworkAPIServer, error) {
 		GenericAPIServer: genericServer,
 	}
 
-	apiGroupInfo := genericapiserver.NewDefaultAPIGroupInfo(network.GroupName, registry, Scheme, metav1.ParameterCodec, Codecs)
-	apiGroupInfo.GroupMeta.GroupVersion = v1alpha1.SchemeGroupVersion
+	apiGroupInfo := genericapiserver.NewDefaultAPIGroupInfo(network.GroupName, Scheme, metav1.ParameterCodec, Codecs)
+	
 	v1alpha1storage := map[string]rest.Storage{}
 	v1alpha1storage["networkattachments"] = networkregistry.RESTInPeace(networkattachmentstorage.NewREST(Scheme, c.GenericConfig.RESTOptionsGetter))
 	v1alpha1storage["subnets"] = networkregistry.RESTInPeace(subnetstorage.NewREST(Scheme, c.GenericConfig.RESTOptionsGetter, c.ExtraConfig.NetworkSharedInformerFactory))
 	v1alpha1storage["iplocks"] = networkregistry.RESTInPeace(iplockstorage.NewREST(Scheme, c.GenericConfig.RESTOptionsGetter))
+	
 	apiGroupInfo.VersionedResourcesStorageMap["v1alpha1"] = v1alpha1storage
 
 	if err := s.GenericAPIServer.InstallAPIGroup(&apiGroupInfo); err != nil {

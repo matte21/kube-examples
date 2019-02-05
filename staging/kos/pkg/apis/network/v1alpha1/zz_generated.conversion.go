@@ -34,35 +34,138 @@ func init() {
 
 // RegisterConversions adds conversion functions to the given scheme.
 // Public to allow building arbitrary schemes.
-func RegisterConversions(scheme *runtime.Scheme) error {
-	return scheme.AddGeneratedConversionFuncs(
-		Convert_v1alpha1_ExecReport_To_network_ExecReport,
-		Convert_network_ExecReport_To_v1alpha1_ExecReport,
-		Convert_v1alpha1_IPLock_To_network_IPLock,
-		Convert_network_IPLock_To_v1alpha1_IPLock,
-		Convert_v1alpha1_IPLockList_To_network_IPLockList,
-		Convert_network_IPLockList_To_v1alpha1_IPLockList,
-		Convert_v1alpha1_IPLockSpec_To_network_IPLockSpec,
-		Convert_network_IPLockSpec_To_v1alpha1_IPLockSpec,
-		Convert_v1alpha1_NetworkAttachment_To_network_NetworkAttachment,
-		Convert_network_NetworkAttachment_To_v1alpha1_NetworkAttachment,
-		Convert_v1alpha1_NetworkAttachmentErrors_To_network_NetworkAttachmentErrors,
-		Convert_network_NetworkAttachmentErrors_To_v1alpha1_NetworkAttachmentErrors,
-		Convert_v1alpha1_NetworkAttachmentList_To_network_NetworkAttachmentList,
-		Convert_network_NetworkAttachmentList_To_v1alpha1_NetworkAttachmentList,
-		Convert_v1alpha1_NetworkAttachmentSpec_To_network_NetworkAttachmentSpec,
-		Convert_network_NetworkAttachmentSpec_To_v1alpha1_NetworkAttachmentSpec,
-		Convert_v1alpha1_NetworkAttachmentStatus_To_network_NetworkAttachmentStatus,
-		Convert_network_NetworkAttachmentStatus_To_v1alpha1_NetworkAttachmentStatus,
-		Convert_v1alpha1_Subnet_To_network_Subnet,
-		Convert_network_Subnet_To_v1alpha1_Subnet,
-		Convert_v1alpha1_SubnetList_To_network_SubnetList,
-		Convert_network_SubnetList_To_v1alpha1_SubnetList,
-		Convert_v1alpha1_SubnetSpec_To_network_SubnetSpec,
-		Convert_network_SubnetSpec_To_v1alpha1_SubnetSpec,
-		Convert_v1alpha1_SubnetStatus_To_network_SubnetStatus,
-		Convert_network_SubnetStatus_To_v1alpha1_SubnetStatus,
-	)
+func RegisterConversions(s *runtime.Scheme) error {
+	if err := s.AddGeneratedConversionFunc((*ExecReport)(nil), (*network.ExecReport)(nil), func(a, b interface{}, scope conversion.Scope) error {
+		return Convert_v1alpha1_ExecReport_To_network_ExecReport(a.(*ExecReport), b.(*network.ExecReport), scope)
+	}); err != nil {
+		return err
+	}
+	if err := s.AddGeneratedConversionFunc((*network.ExecReport)(nil), (*ExecReport)(nil), func(a, b interface{}, scope conversion.Scope) error {
+		return Convert_network_ExecReport_To_v1alpha1_ExecReport(a.(*network.ExecReport), b.(*ExecReport), scope)
+	}); err != nil {
+		return err
+	}
+	if err := s.AddGeneratedConversionFunc((*IPLock)(nil), (*network.IPLock)(nil), func(a, b interface{}, scope conversion.Scope) error {
+		return Convert_v1alpha1_IPLock_To_network_IPLock(a.(*IPLock), b.(*network.IPLock), scope)
+	}); err != nil {
+		return err
+	}
+	if err := s.AddGeneratedConversionFunc((*network.IPLock)(nil), (*IPLock)(nil), func(a, b interface{}, scope conversion.Scope) error {
+		return Convert_network_IPLock_To_v1alpha1_IPLock(a.(*network.IPLock), b.(*IPLock), scope)
+	}); err != nil {
+		return err
+	}
+	if err := s.AddGeneratedConversionFunc((*IPLockList)(nil), (*network.IPLockList)(nil), func(a, b interface{}, scope conversion.Scope) error {
+		return Convert_v1alpha1_IPLockList_To_network_IPLockList(a.(*IPLockList), b.(*network.IPLockList), scope)
+	}); err != nil {
+		return err
+	}
+	if err := s.AddGeneratedConversionFunc((*network.IPLockList)(nil), (*IPLockList)(nil), func(a, b interface{}, scope conversion.Scope) error {
+		return Convert_network_IPLockList_To_v1alpha1_IPLockList(a.(*network.IPLockList), b.(*IPLockList), scope)
+	}); err != nil {
+		return err
+	}
+	if err := s.AddGeneratedConversionFunc((*IPLockSpec)(nil), (*network.IPLockSpec)(nil), func(a, b interface{}, scope conversion.Scope) error {
+		return Convert_v1alpha1_IPLockSpec_To_network_IPLockSpec(a.(*IPLockSpec), b.(*network.IPLockSpec), scope)
+	}); err != nil {
+		return err
+	}
+	if err := s.AddGeneratedConversionFunc((*network.IPLockSpec)(nil), (*IPLockSpec)(nil), func(a, b interface{}, scope conversion.Scope) error {
+		return Convert_network_IPLockSpec_To_v1alpha1_IPLockSpec(a.(*network.IPLockSpec), b.(*IPLockSpec), scope)
+	}); err != nil {
+		return err
+	}
+	if err := s.AddGeneratedConversionFunc((*NetworkAttachment)(nil), (*network.NetworkAttachment)(nil), func(a, b interface{}, scope conversion.Scope) error {
+		return Convert_v1alpha1_NetworkAttachment_To_network_NetworkAttachment(a.(*NetworkAttachment), b.(*network.NetworkAttachment), scope)
+	}); err != nil {
+		return err
+	}
+	if err := s.AddGeneratedConversionFunc((*network.NetworkAttachment)(nil), (*NetworkAttachment)(nil), func(a, b interface{}, scope conversion.Scope) error {
+		return Convert_network_NetworkAttachment_To_v1alpha1_NetworkAttachment(a.(*network.NetworkAttachment), b.(*NetworkAttachment), scope)
+	}); err != nil {
+		return err
+	}
+	if err := s.AddGeneratedConversionFunc((*NetworkAttachmentErrors)(nil), (*network.NetworkAttachmentErrors)(nil), func(a, b interface{}, scope conversion.Scope) error {
+		return Convert_v1alpha1_NetworkAttachmentErrors_To_network_NetworkAttachmentErrors(a.(*NetworkAttachmentErrors), b.(*network.NetworkAttachmentErrors), scope)
+	}); err != nil {
+		return err
+	}
+	if err := s.AddGeneratedConversionFunc((*network.NetworkAttachmentErrors)(nil), (*NetworkAttachmentErrors)(nil), func(a, b interface{}, scope conversion.Scope) error {
+		return Convert_network_NetworkAttachmentErrors_To_v1alpha1_NetworkAttachmentErrors(a.(*network.NetworkAttachmentErrors), b.(*NetworkAttachmentErrors), scope)
+	}); err != nil {
+		return err
+	}
+	if err := s.AddGeneratedConversionFunc((*NetworkAttachmentList)(nil), (*network.NetworkAttachmentList)(nil), func(a, b interface{}, scope conversion.Scope) error {
+		return Convert_v1alpha1_NetworkAttachmentList_To_network_NetworkAttachmentList(a.(*NetworkAttachmentList), b.(*network.NetworkAttachmentList), scope)
+	}); err != nil {
+		return err
+	}
+	if err := s.AddGeneratedConversionFunc((*network.NetworkAttachmentList)(nil), (*NetworkAttachmentList)(nil), func(a, b interface{}, scope conversion.Scope) error {
+		return Convert_network_NetworkAttachmentList_To_v1alpha1_NetworkAttachmentList(a.(*network.NetworkAttachmentList), b.(*NetworkAttachmentList), scope)
+	}); err != nil {
+		return err
+	}
+	if err := s.AddGeneratedConversionFunc((*NetworkAttachmentSpec)(nil), (*network.NetworkAttachmentSpec)(nil), func(a, b interface{}, scope conversion.Scope) error {
+		return Convert_v1alpha1_NetworkAttachmentSpec_To_network_NetworkAttachmentSpec(a.(*NetworkAttachmentSpec), b.(*network.NetworkAttachmentSpec), scope)
+	}); err != nil {
+		return err
+	}
+	if err := s.AddGeneratedConversionFunc((*network.NetworkAttachmentSpec)(nil), (*NetworkAttachmentSpec)(nil), func(a, b interface{}, scope conversion.Scope) error {
+		return Convert_network_NetworkAttachmentSpec_To_v1alpha1_NetworkAttachmentSpec(a.(*network.NetworkAttachmentSpec), b.(*NetworkAttachmentSpec), scope)
+	}); err != nil {
+		return err
+	}
+	if err := s.AddGeneratedConversionFunc((*NetworkAttachmentStatus)(nil), (*network.NetworkAttachmentStatus)(nil), func(a, b interface{}, scope conversion.Scope) error {
+		return Convert_v1alpha1_NetworkAttachmentStatus_To_network_NetworkAttachmentStatus(a.(*NetworkAttachmentStatus), b.(*network.NetworkAttachmentStatus), scope)
+	}); err != nil {
+		return err
+	}
+	if err := s.AddGeneratedConversionFunc((*network.NetworkAttachmentStatus)(nil), (*NetworkAttachmentStatus)(nil), func(a, b interface{}, scope conversion.Scope) error {
+		return Convert_network_NetworkAttachmentStatus_To_v1alpha1_NetworkAttachmentStatus(a.(*network.NetworkAttachmentStatus), b.(*NetworkAttachmentStatus), scope)
+	}); err != nil {
+		return err
+	}
+	if err := s.AddGeneratedConversionFunc((*Subnet)(nil), (*network.Subnet)(nil), func(a, b interface{}, scope conversion.Scope) error {
+		return Convert_v1alpha1_Subnet_To_network_Subnet(a.(*Subnet), b.(*network.Subnet), scope)
+	}); err != nil {
+		return err
+	}
+	if err := s.AddGeneratedConversionFunc((*network.Subnet)(nil), (*Subnet)(nil), func(a, b interface{}, scope conversion.Scope) error {
+		return Convert_network_Subnet_To_v1alpha1_Subnet(a.(*network.Subnet), b.(*Subnet), scope)
+	}); err != nil {
+		return err
+	}
+	if err := s.AddGeneratedConversionFunc((*SubnetList)(nil), (*network.SubnetList)(nil), func(a, b interface{}, scope conversion.Scope) error {
+		return Convert_v1alpha1_SubnetList_To_network_SubnetList(a.(*SubnetList), b.(*network.SubnetList), scope)
+	}); err != nil {
+		return err
+	}
+	if err := s.AddGeneratedConversionFunc((*network.SubnetList)(nil), (*SubnetList)(nil), func(a, b interface{}, scope conversion.Scope) error {
+		return Convert_network_SubnetList_To_v1alpha1_SubnetList(a.(*network.SubnetList), b.(*SubnetList), scope)
+	}); err != nil {
+		return err
+	}
+	if err := s.AddGeneratedConversionFunc((*SubnetSpec)(nil), (*network.SubnetSpec)(nil), func(a, b interface{}, scope conversion.Scope) error {
+		return Convert_v1alpha1_SubnetSpec_To_network_SubnetSpec(a.(*SubnetSpec), b.(*network.SubnetSpec), scope)
+	}); err != nil {
+		return err
+	}
+	if err := s.AddGeneratedConversionFunc((*network.SubnetSpec)(nil), (*SubnetSpec)(nil), func(a, b interface{}, scope conversion.Scope) error {
+		return Convert_network_SubnetSpec_To_v1alpha1_SubnetSpec(a.(*network.SubnetSpec), b.(*SubnetSpec), scope)
+	}); err != nil {
+		return err
+	}
+	if err := s.AddGeneratedConversionFunc((*SubnetStatus)(nil), (*network.SubnetStatus)(nil), func(a, b interface{}, scope conversion.Scope) error {
+		return Convert_v1alpha1_SubnetStatus_To_network_SubnetStatus(a.(*SubnetStatus), b.(*network.SubnetStatus), scope)
+	}); err != nil {
+		return err
+	}
+	if err := s.AddGeneratedConversionFunc((*network.SubnetStatus)(nil), (*SubnetStatus)(nil), func(a, b interface{}, scope conversion.Scope) error {
+		return Convert_network_SubnetStatus_To_v1alpha1_SubnetStatus(a.(*network.SubnetStatus), b.(*SubnetStatus), scope)
+	}); err != nil {
+		return err
+	}
+	return nil
 }
 
 func autoConvert_v1alpha1_ExecReport_To_network_ExecReport(in *ExecReport, out *network.ExecReport, s conversion.Scope) error {

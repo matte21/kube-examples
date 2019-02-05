@@ -17,6 +17,7 @@ limitations under the License.
 package iplock
 
 import (
+	"context"
 	"fmt"
 
 	"k8s.io/apimachinery/pkg/fields"
@@ -27,7 +28,6 @@ import (
 	"k8s.io/apiserver/pkg/storage"
 	"k8s.io/apiserver/pkg/storage/names"
 
-	genericapirequest "k8s.io/apiserver/pkg/endpoints/request"
 	"k8s.io/apiserver/pkg/registry/rest"
 	"k8s.io/examples/staging/kos/pkg/apis/network"
 )
@@ -75,13 +75,13 @@ func (iplockStrategy) NamespaceScoped() bool {
 	return true
 }
 
-func (iplockStrategy) PrepareForCreate(ctx genericapirequest.Context, obj runtime.Object) {
+func (iplockStrategy) PrepareForCreate(ctx context.Context, obj runtime.Object) {
 }
 
-func (iplockStrategy) PrepareForUpdate(ctx genericapirequest.Context, obj, old runtime.Object) {
+func (iplockStrategy) PrepareForUpdate(ctx context.Context, obj, old runtime.Object) {
 }
 
-func (iplockStrategy) Validate(ctx genericapirequest.Context, obj runtime.Object) field.ErrorList {
+func (iplockStrategy) Validate(ctx context.Context, obj runtime.Object) field.ErrorList {
 	return field.ErrorList{}
 }
 
@@ -96,6 +96,6 @@ func (iplockStrategy) AllowUnconditionalUpdate() bool {
 func (iplockStrategy) Canonicalize(obj runtime.Object) {
 }
 
-func (iplockStrategy) ValidateUpdate(ctx genericapirequest.Context, obj, old runtime.Object) field.ErrorList {
+func (iplockStrategy) ValidateUpdate(ctx context.Context, obj, old runtime.Object) field.ErrorList {
 	return field.ErrorList{}
 }
