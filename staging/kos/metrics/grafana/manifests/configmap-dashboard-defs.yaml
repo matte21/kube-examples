@@ -4877,7 +4877,7 @@ data:
       "editable": true,
       "gnetId": null,
       "graphTooltip": 0,
-      "id": 5,
+      "id": 3,
       "links": [],
       "panels": [
         {
@@ -4924,6 +4924,13 @@ data:
               "intervalFactor": 2,
               "legendFormat": "{{ instance }} total",
               "refId": "A"
+            },
+            {
+              "expr": "sum(rate(apiserver_request_count{client=~\".*ipam.*\"}[1m])) by (instance)",
+              "format": "time_series",
+              "intervalFactor": 2,
+              "legendFormat": "{{ instance }} ipam total",
+              "refId": "G"
             },
             {
               "expr": "sum(rate(apiserver_dropped_requests[1m])) by (instance)",
@@ -5043,10 +5050,10 @@ data:
           "steppedLine": false,
           "targets": [
             {
-              "expr": "histogram_quantile(0.5, sum(rate(apiserver_request_latencies_bucket{verb!~\"WATCH|CONNECT|LIST\"}[1m])) by (instance,resource,le))/1.0e6",
+              "expr": "histogram_quantile(0.9, sum(rate(apiserver_request_latencies_bucket{verb!~\"WATCH|CONNECT|LIST\"}[1m])) by (instance,resource,le))/1.0e6",
               "format": "time_series",
               "intervalFactor": 2,
-              "legendFormat": "median {{ instance }} {{ resource }}",
+              "legendFormat": "90th {{ instance }} {{ resource }}",
               "refId": "A"
             }
           ],
@@ -5054,7 +5061,7 @@ data:
           "timeFrom": null,
           "timeRegions": [],
           "timeShift": null,
-          "title": "Short Request Latency (Secs)",
+          "title": "90th Percentile Short Request Latency (Secs)",
           "tooltip": {
             "shared": true,
             "sort": 0,
@@ -5103,6 +5110,95 @@ data:
             "w": 24,
             "x": 0,
             "y": 14
+          },
+          "id": 10,
+          "legend": {
+            "alignAsTable": true,
+            "avg": true,
+            "current": true,
+            "max": false,
+            "min": false,
+            "rightSide": true,
+            "show": true,
+            "sort": "avg",
+            "sortDesc": true,
+            "total": false,
+            "values": true
+          },
+          "lines": true,
+          "linewidth": 1,
+          "links": [],
+          "nullPointMode": "null",
+          "percentage": false,
+          "pointradius": 5,
+          "points": false,
+          "renderer": "flot",
+          "seriesOverrides": [],
+          "spaceLength": 10,
+          "stack": false,
+          "steppedLine": false,
+          "targets": [
+            {
+              "expr": "sum(rate(apiserver_request_latencies_sum{verb!~\"WATCH|CONNECT|LIST\"}[1m])) by (instance,resource) / sum(rate(apiserver_request_latencies_count{verb!~\"WATCH|CONNECT|LIST\"}[1m])) by (instance,resource) / 1.0e6",
+              "format": "time_series",
+              "intervalFactor": 2,
+              "legendFormat": "avg {{ instance }} {{ resource }}",
+              "refId": "A"
+            }
+          ],
+          "thresholds": [],
+          "timeFrom": null,
+          "timeRegions": [],
+          "timeShift": null,
+          "title": "Avg Short Request Latency (Secs)",
+          "tooltip": {
+            "shared": true,
+            "sort": 0,
+            "value_type": "individual"
+          },
+          "type": "graph",
+          "xaxis": {
+            "buckets": null,
+            "mode": "time",
+            "name": null,
+            "show": true,
+            "values": []
+          },
+          "yaxes": [
+            {
+              "format": "short",
+              "label": null,
+              "logBase": 1,
+              "max": null,
+              "min": null,
+              "show": true
+            },
+            {
+              "format": "short",
+              "label": null,
+              "logBase": 1,
+              "max": null,
+              "min": null,
+              "show": true
+            }
+          ],
+          "yaxis": {
+            "align": false,
+            "alignLevel": null
+          }
+        },
+        {
+          "aliasColors": {},
+          "bars": false,
+          "dashLength": 10,
+          "dashes": false,
+          "datasource": "prometheus",
+          "fill": 1,
+          "gridPos": {
+            "h": 7,
+            "w": 24,
+            "x": 0,
+            "y": 21
           },
           "id": 5,
           "legend": {
@@ -5192,7 +5288,7 @@ data:
             "h": 7,
             "w": 24,
             "x": 0,
-            "y": 21
+            "y": 28
           },
           "id": 4,
           "legend": {
@@ -5281,7 +5377,7 @@ data:
             "h": 7,
             "w": 24,
             "x": 0,
-            "y": 28
+            "y": 35
           },
           "id": 9,
           "legend": {
@@ -5370,7 +5466,7 @@ data:
             "h": 7,
             "w": 24,
             "x": 0,
-            "y": 35
+            "y": 42
           },
           "id": 6,
           "legend": {
@@ -5459,7 +5555,7 @@ data:
             "h": 7,
             "w": 24,
             "x": 0,
-            "y": 42
+            "y": 49
           },
           "id": 7,
           "legend": {
@@ -5548,7 +5644,7 @@ data:
             "h": 7,
             "w": 24,
             "x": 0,
-            "y": 49
+            "y": 56
           },
           "id": 8,
           "legend": {
@@ -5637,7 +5733,7 @@ data:
             "h": 7,
             "w": 24,
             "x": 0,
-            "y": 56
+            "y": 63
           },
           "id": 3,
           "legend": {
@@ -5755,7 +5851,7 @@ data:
       "timezone": "",
       "title": "Kubernetes apiservers",
       "uid": "z-OXUz_mk",
-      "version": 1
+      "version": 3
     }
   kubernetes-pods.json: |
     {
