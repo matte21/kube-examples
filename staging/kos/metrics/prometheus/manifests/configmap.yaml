@@ -46,6 +46,27 @@ data:
         action: keep
         regex: default;kubernetes;https
     
+    # etcd servers on nodes annotated `prometheus.io/scrape-etcd=true`.
+    - job_name: 'kubernetes-etcd'
+      tls_config:
+        cert_file: /etc/main-etcd-client-tls/client.crt
+        key_file: /etc/main-etcd-client-tls/client.key
+        insecure_skip_verify: true
+    #    ca_file: /etc/main-etcd-client-tls/ca.crt
+      kubernetes_sd_configs:
+        - role: node
+      relabel_configs:
+        - source_labels: [__meta_kubernetes_node_annotation_prometheus_io_scrape_etcd]
+          action: keep
+          regex: (true)
+        - source_labels: [__address__]
+          regex: '(.*):10250'
+          replacement: '$1:2379'
+          target_label: __address__
+        - target_label: __scheme__
+          action: replace
+          replacement: 'https'
+    
     
     - job_name: 'kubernetes-nodes-cadvisor'
       tls_config:
