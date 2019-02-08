@@ -43,6 +43,9 @@ spec:
           mountPath: /etc/prometheus
         - name: var-lib
           mountPath: /var/lib
+        - name: main-etcd-client-tls
+          mountPath: /etc/main-etcd-client-tls
+          readOnly: true
       volumes:
       - name: config-volume
         configMap:
@@ -50,3 +53,7 @@ spec:
       - name: var-lib
         hostPath:
           path: /var/lib
+      - name: main-etcd-client-tls
+        secret:
+          secretName: main-etcd-client-tls
+          optional: true

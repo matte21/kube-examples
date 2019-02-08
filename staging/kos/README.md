@@ -368,8 +368,9 @@ discussed above to identify which KOS subset(s) each node belongs to.
 
 ### Prometheus and Grafana
 
-Ome way to deploy them is to issue the following commands, with `kos`
-as your current working directory.
+An example of how to deploy and configure Prometheus and Grafana is in
+`kos/metrics/`.  Deploy this with the following commands, with `kos` as
+your current working directory.
 
 ```
 kubectl apply  -f metrics/prometheus/manifests
@@ -399,7 +400,15 @@ The Prometheus configuration is based on
 https://github.com/prometheus/prometheus/blob/63fe65bf2ff8c480bb4350e4d278d3208ca687be/documentation/examples/prometheus-kubernetes.yml
 and has the following notable modifications.
 
-- There is an additiona Prometheus job, `kubernetes-nodes-cadvisor`,
+- There is an additional Prometheus job, `kubernetes-etcd`, that will
+  scrape `https://$node_internal_IP:2379/metrics` on nodes annotated
+  with `prometheus.io/scrape-etcd=true`.  This call will use the TLS
+  client credentials found in the secret named `main-etcd-client-tls`
+  in the default namespace, expecting data items named `client.crt`
+  and `client.key`.  This secret should exist _before_ Prometheus is
+  deployed.  The server certificate is not checked.
+
+- There is an additional Prometheus job, `kubernetes-nodes-cadvisor`,
   that will scrape port 4194 on nodes labelled
   `prometheus.io/scrape=true`.
 
