@@ -21,6 +21,7 @@ import (
 	"fmt"
 	gonet "net"
 	"net/http"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -52,9 +53,10 @@ import (
 )
 
 const (
-	// Name of the indexer which computes the MAC address for a network
-	// attachment. Used for syncing pre-existing interfaces at start-up.
-	attMACIndexName = "attachmentMAC"
+	// Name of the indexer which computes a string concatenating the VNI and IP
+	// of a network attachment. Used for syncing pre-existing interfaces at
+	// start-up.
+	attVNIAndIPIndexerName = "attachmentVNIAndIP"
 
 	// NetworkAttachments in network.example.com/v1alpha1
 	// fields names. Used to build field selectors.
@@ -405,7 +407,7 @@ func (ca *ConnectionAgent) initLocalAttsInformerAndLister() {
 		resyncPeriod,
 		fromFieldsSelectorToTweakListOptionsFunc(localAttWithAnIPSelector.String()))
 
-	ca.localAttsInformer.AddIndexers(map[string]k8scache.IndexFunc{attMACIndexName: attachmentMACAddr})
+	ca.localAttsInformer.AddIndexers(map[string]k8scache.IndexFunc{attVNIAndIPIndexerName: attVNIAndIPIndexer})
 
 	ca.localAttsInformer.AddEventHandler(k8scache.ResourceEventHandlerFuncs{
 		AddFunc:    ca.onLocalAttAdded,
@@ -458,11 +460,11 @@ func (ca *ConnectionAgent) syncPreExistingLocalIfcs() error {
 	}
 
 	for _, aPreExistingLocalIfc := range allPreExistingLocalIfcs {
-		ifcMAC := aPreExistingLocalIfc.GuestMAC.String()
-		ifcOwnerAtts, err := ca.localAttsInformer.GetIndexer().ByIndex(attMACIndexName, ifcMAC)
+		ifcVNIAndIP := localIfcVNIAndIP(&aPreExistingLocalIfc)
+		ifcOwnerAtts, err := ca.localAttsInformer.GetIndexer().ByIndex(attVNIAndIPIndexerName, ifcVNIAndIP)
 		if err != nil {
-			return fmt.Errorf("indexing local network interface with MAC %s failed: %s",
-				ifcMAC,
+			return fmt.Errorf("indexing local network interface with VNI/IP=%s failed: %s",
+				ifcVNIAndIP,
 				err.Error())
 		}
 
@@ -529,14 +531,14 @@ func (ca *ConnectionAgent) syncPreExistingRemoteIfcs() error {
 	}
 	for _, aPreExistingRemoteIfc := range allPreExistingRemoteIfcs {
 		var ifcOwnerAtts []interface{}
-		ifcMAC, ifcVNI := aPreExistingRemoteIfc.GuestMAC.String(), aPreExistingRemoteIfc.VNI
+		ifcVNI := aPreExistingRemoteIfc.VNI
 		remoteAttsInformer, remoteAttsInformerStopCh := ca.getRemoteAttsInformerForVNI(ifcVNI)
 		if remoteAttsInformer != nil {
 			if !remoteAttsInformer.HasSynced() &&
 				!k8scache.WaitForCacheSync(remoteAttsInformerStopCh, remoteAttsInformer.HasSynced) {
 				return fmt.Errorf("failed to sync cache of remote attachments for VNI %06x", ifcVNI)
 			}
-			ifcOwnerAtts, err = remoteAttsInformer.GetIndexer().ByIndex(attMACIndexName, ifcMAC)
+			ifcOwnerAtts, err = remoteAttsInformer.GetIndexer().ByIndex(attVNIAndIPIndexerName, remoteIfcVNIAndIP(&aPreExistingRemoteIfc))
 		}
 
 		if len(ifcOwnerAtts) == 1 {
@@ -1085,7 +1087,7 @@ func (ca *ConnectionAgent) initVNState(vni uint32, namespace string) *vnState {
 		namespace,
 		fromFieldsSelectorToTweakListOptionsFunc(ca.remoteAttInVNWithVirtualIPHostIPSelector(vni).String()))
 
-	remoteAttsInformer.AddIndexers(map[string]k8scache.IndexFunc{attMACIndexName: attachmentMACAddr})
+	remoteAttsInformer.AddIndexers(map[string]k8scache.IndexFunc{attVNIAndIPIndexerName: attVNIAndIPIndexer})
 
 	remoteAttsInformer.AddEventHandler(k8scache.ResourceEventHandlerFuncs{
 		AddFunc:    ca.onRemoteAttAdded,
@@ -1365,12 +1367,28 @@ func createAttsv1a1Informer(kcs *kosclientset.Clientset,
 	return netv1a1Ifc.NetworkAttachments()
 }
 
-// attachmentMACAddr is an Index function that computes the MAC address of a
-// NetworkAttachment. Used to sync pre-existing interfaces with attachments at
-// start up.
-func attachmentMACAddr(obj interface{}) ([]string, error) {
+// attVNIAndIPIndexer is an Index function that computes a string made up by vni
+// and IP of a NetworkAttachment. Used to sync pre-existing interfaces with
+// attachments at start up.
+func attVNIAndIPIndexer(obj interface{}) ([]string, error) {
 	att := obj.(*netv1a1.NetworkAttachment)
-	return []string{generateMACAddr(att.Status.AddressVNI, gonet.ParseIP(att.Status.IPv4)).String()}, nil
+	return []string{attVNIAndIP(att.Status.AddressVNI, att.Status.IPv4)}, nil
+}
+
+func attVNIAndIP(vni uint32, ipv4 string) string {
+	return strconv.FormatUint(uint64(vni), 16) + "/" + ipv4
+}
+
+func localIfcVNIAndIP(ifc *netfabric.LocalNetIfc) string {
+	return ifcVNIAndIP(ifc.VNI, ifc.GuestIP)
+}
+
+func remoteIfcVNIAndIP(ifc *netfabric.RemoteNetIfc) string {
+	return ifcVNIAndIP(ifc.VNI, ifc.GuestIP)
+}
+
+func ifcVNIAndIP(vni uint32, ipv4 gonet.IP) string {
+	return strconv.FormatUint(uint64(vni), 16) + "/" + ipv4.String()
 }
 
 func generateMACAddr(vni uint32, guestIPv4 gonet.IP) gonet.HardwareAddr {

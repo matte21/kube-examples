@@ -27,6 +27,7 @@ import (
 	"time"
 
 	"github.com/golang/glog"
+
 	"k8s.io/examples/staging/kos/pkg/util"
 )
 
