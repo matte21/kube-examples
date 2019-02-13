@@ -21,6 +21,7 @@ import (
 	"fmt"
 	gonet "net"
 	"net/http"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -31,6 +32,7 @@ import (
 
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	k8smetav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	k8sfields "k8s.io/apimachinery/pkg/fields"
 	k8slabels "k8s.io/apimachinery/pkg/labels"
 	k8stypes "k8s.io/apimachinery/pkg/types"
 	k8sutilruntime "k8s.io/apimachinery/pkg/util/runtime"
@@ -51,21 +53,17 @@ import (
 )
 
 const (
-	// Name of the indexer which computes the MAC address for a network
-	// attachment. Used for syncing pre-existing interfaces at start-up.
-	attMACIndexName = "attachmentMAC"
+	// Name of the indexer which computes a string concatenating the VNI and IP
+	// of a network attachment. Used for syncing pre-existing interfaces at
+	// start-up.
+	attVNIAndIPIndexerName = "attachmentVNIAndIP"
 
 	// NetworkAttachments in network.example.com/v1alpha1
 	// fields names. Used to build field selectors.
-	attNodeFieldName   = "spec.node"
-	attIPFieldName     = "status.ipv4"
-	attHostIPFieldName = "status.hostIP"
-	attVNIFieldName    = "status.addressVNI"
-
-	// fields selector comparison operators.
-	// Used to build fields selectors.
-	equal    = "="
-	notEqual = "!="
+	attNode   = "spec.node"
+	attIPv4   = "status.ipv4"
+	attHostIP = "status.hostIP"
+	attVNI    = "status.addressVNI"
 
 	// resync period for Informers caches. Set
 	// to 0 because we don't want resyncs.
@@ -407,9 +405,9 @@ func (ca *ConnectionAgent) initLocalAttsInformerAndLister() {
 
 	ca.localAttsInformer, ca.localAttsLister = v1a1AttsCustomInformerAndLister(ca.kcs,
 		resyncPeriod,
-		fromFieldsSelectorToTweakListOptionsFunc(localAttWithAnIPSelector))
+		fromFieldsSelectorToTweakListOptionsFunc(localAttWithAnIPSelector.String()))
 
-	ca.localAttsInformer.AddIndexers(map[string]k8scache.IndexFunc{attMACIndexName: attachmentMACAddr})
+	ca.localAttsInformer.AddIndexers(map[string]k8scache.IndexFunc{attVNIAndIPIndexerName: attVNIAndIPIndexer})
 
 	ca.localAttsInformer.AddEventHandler(k8scache.ResourceEventHandlerFuncs{
 		AddFunc:    ca.onLocalAttAdded,
@@ -462,11 +460,11 @@ func (ca *ConnectionAgent) syncPreExistingLocalIfcs() error {
 	}
 
 	for _, aPreExistingLocalIfc := range allPreExistingLocalIfcs {
-		ifcMAC := aPreExistingLocalIfc.GuestMAC.String()
-		ifcOwnerAtts, err := ca.localAttsInformer.GetIndexer().ByIndex(attMACIndexName, ifcMAC)
+		ifcVNIAndIP := localIfcVNIAndIP(&aPreExistingLocalIfc)
+		ifcOwnerAtts, err := ca.localAttsInformer.GetIndexer().ByIndex(attVNIAndIPIndexerName, ifcVNIAndIP)
 		if err != nil {
-			return fmt.Errorf("indexing local network interface with MAC %s failed: %s",
-				ifcMAC,
+			return fmt.Errorf("indexing local network interface with VNI/IP=%s failed: %s",
+				ifcVNIAndIP,
 				err.Error())
 		}
 
@@ -533,14 +531,14 @@ func (ca *ConnectionAgent) syncPreExistingRemoteIfcs() error {
 	}
 	for _, aPreExistingRemoteIfc := range allPreExistingRemoteIfcs {
 		var ifcOwnerAtts []interface{}
-		ifcMAC, ifcVNI := aPreExistingRemoteIfc.GuestMAC.String(), aPreExistingRemoteIfc.VNI
+		ifcVNI := aPreExistingRemoteIfc.VNI
 		remoteAttsInformer, remoteAttsInformerStopCh := ca.getRemoteAttsInformerForVNI(ifcVNI)
 		if remoteAttsInformer != nil {
 			if !remoteAttsInformer.HasSynced() &&
 				!k8scache.WaitForCacheSync(remoteAttsInformerStopCh, remoteAttsInformer.HasSynced) {
 				return fmt.Errorf("failed to sync cache of remote attachments for VNI %06x", ifcVNI)
 			}
-			ifcOwnerAtts, err = remoteAttsInformer.GetIndexer().ByIndex(attMACIndexName, ifcMAC)
+			ifcOwnerAtts, err = remoteAttsInformer.GetIndexer().ByIndex(attVNIAndIPIndexerName, remoteIfcVNIAndIP(&aPreExistingRemoteIfc))
 		}
 
 		if len(ifcOwnerAtts) == 1 {
@@ -1087,9 +1085,9 @@ func (ca *ConnectionAgent) initVNState(vni uint32, namespace string) *vnState {
 	remoteAttsInformer, remoteAttsLister := v1a1AttsCustomNamespaceInformerAndLister(ca.kcs,
 		resyncPeriod,
 		namespace,
-		fromFieldsSelectorToTweakListOptionsFunc(ca.remoteAttInVNWithVirtualIPHostIPSelector(vni)))
+		fromFieldsSelectorToTweakListOptionsFunc(ca.remoteAttInVNWithVirtualIPHostIPSelector(vni).String()))
 
-	remoteAttsInformer.AddIndexers(map[string]k8scache.IndexFunc{attMACIndexName: attachmentMACAddr})
+	remoteAttsInformer.AddIndexers(map[string]k8scache.IndexFunc{attVNIAndIPIndexerName: attVNIAndIPIndexer})
 
 	remoteAttsInformer.AddEventHandler(k8scache.ResourceEventHandlerFuncs{
 		AddFunc:    ca.onRemoteAttAdded,
@@ -1272,60 +1270,53 @@ func (ca *ConnectionAgent) getRemoteAttsInformerForVNI(vni uint32) (k8scache.Sha
 	return vnState.remoteAttsInformer, vnState.remoteAttsInformerStopCh
 }
 
-// Return a string representing a field selector that matches NetworkAttachments
-// that run on the local node and have a virtual IP.
-func (ca *ConnectionAgent) localAttWithAnIPSelector() string {
-	// localAttSelector expresses the constraint that the NetworkAttachment runs
-	// on this node.
-	localAttSelector := attNodeFieldName + equal + ca.localNodeName
+// localAttWithAnIPSelector returns a field selector that matches
+// NetworkAttachments that run on the local node and have a virtual IP.
+func (ca *ConnectionAgent) localAttWithAnIPSelector() k8sfields.Selector {
+	// localAtt is a selector that expresses the constraint that the
+	// NetworkAttachment runs on the same node as the connection agent.
+	localAtt := k8sfields.OneTermEqualSelector(attNode, ca.localNodeName)
 
-	// Express the constraint that the NetworkAttachment has a virtual IP by
-	// saying that the field containig the virtual IP must not be equal to the
-	// empty string.
-	attWithAnIPSelector := attIPFieldName + notEqual
+	// attWithAnIP is a selector that expresses the constraint that the
+	// NetworkAttachment has a virtual IP.
+	attWithAnIP := k8sfields.OneTermNotEqualSelector(attIPv4, "")
 
-	// Build a selector which is a logical AND between
-	// attWithAnIPSelectorString and localAttSelectorString.
-	allSelectors := []string{localAttSelector, attWithAnIPSelector}
-	return strings.Join(allSelectors, ",")
+	// Return a selector that is a logical AND between attWithAnIP and localAtt
+	return k8sfields.AndSelectors(localAtt, attWithAnIP)
 }
 
-// Return a string representing a field selector that matches NetworkAttachments
-// that run on a remote node on the Virtual Network identified by the given VNI
-// and have a virtual IP and the host IP field set.
-func (ca *ConnectionAgent) remoteAttInVNWithVirtualIPHostIPSelector(vni uint32) string {
-	// remoteAttSelector expresses the constraint that the NetworkAttachment
-	// runs on a remote node.
-	remoteAttSelector := attNodeFieldName + notEqual + ca.localNodeName
+// remoteAttInVNWithVirtualIPHostIPSelector returns a string representing a
+// field selector that matches NetworkAttachments that run on a remote node on
+// the Virtual Network identified by the given VNI and have a virtual IP and the
+// host IP fields set.
+func (ca *ConnectionAgent) remoteAttInVNWithVirtualIPHostIPSelector(vni uint32) k8sfields.Selector {
+	// remoteAtt expresses the constraint that the NetworkAttachment runs on a
+	// remote node.
+	remoteAtt := k8sfields.OneTermNotEqualSelector(attNode, ca.localNodeName)
 
-	// hostIPIsNotLocalSelector expresses the constraint that the NetworkAttachment
-	// status.hostIP is not equal to that of the current node. Without this selector,
-	// an update to the spec.Node field of a NetworkAttachment could lead to a
-	// creation notification for the attachment in a remote attachments cache,
-	// even if the attachment still has the host IP of the current node
-	// (status.hostIP is set with an update by the connection agent on the
-	// node of the attachment). This could result in the creation of a remote
-	// interface with the host IP of the local node.
-	hostIPIsNotLocalSelector := attHostIPFieldName + notEqual + ca.hostIP.String()
+	// hostIPIsNotLocal expresses the constraint that the NetworkAttachment
+	// status.hostIP is not equal to that of the IP of the connection agent.
+	// Without this selector, an update to the spec.Node field of a NetworkAttachment
+	// could lead to a creation notification for the attachment in a remote
+	// attachments cache, even if the attachment still has the host IP of the
+	// connection node (status.hostIP is set with an update by the connection
+	// agent on the node of the attachment). This could result in the creation
+	// of a remote interface with the host IP of the connection agent (local) node.
+	hostIPIsNotLocal := k8sfields.OneTermNotEqualSelector(attHostIP, ca.hostIP.String())
 
-	// attWithAnIPSelector and attWithHostIPSelector express the constraints that
-	// the NetworkAttachment has the fields storing virtual IP and host IP set,
-	// by saying that such fields must not be equal to the empty string.
-	attWithAnIPSelector := attIPFieldName + notEqual
-	attWithHostIPSelector := attHostIPFieldName + notEqual
+	// attWithAnIP and attWithHostIP express the constraints that the
+	// NetworkAttachment has the fields storing virtual IP and host IP set, by
+	// saying that such fields must not be equal to the empty string.
+	attWithAnIP := k8sfields.OneTermNotEqualSelector(attIPv4, "")
+	attWithHostIP := k8sfields.OneTermNotEqualSelector(attHostIP, "")
 
-	// attInSpecificVNSelector expresses the constraint that the NetworkAttachment
+	// attInSpecificVN expresses the constraint that the NetworkAttachment
 	// is in the Virtual Network identified by vni.
-	attInSpecificVNSelector := attVNIFieldName + equal + fmt.Sprint(vni)
+	attInSpecificVN := k8sfields.OneTermEqualSelector(attVNI, fmt.Sprint(vni))
 
 	// Build and return a selector which is a logical AND between all the selectors
 	// defined above.
-	allSelectors := []string{remoteAttSelector,
-		hostIPIsNotLocalSelector,
-		attWithAnIPSelector,
-		attWithHostIPSelector,
-		attInSpecificVNSelector}
-	return strings.Join(allSelectors, ",")
+	return k8sfields.AndSelectors(remoteAtt, hostIPIsNotLocal, attWithAnIP, attWithHostIP, attInSpecificVN)
 }
 
 func fromFieldsSelectorToTweakListOptionsFunc(customFieldSelector string) kosinternalifcs.TweakListOptionsFunc {
@@ -1376,12 +1367,28 @@ func createAttsv1a1Informer(kcs *kosclientset.Clientset,
 	return netv1a1Ifc.NetworkAttachments()
 }
 
-// attachmentMACAddr is an Index function that computes the MAC address of a
-// NetworkAttachment. Used to sync pre-existing interfaces with attachments at
-// start up.
-func attachmentMACAddr(obj interface{}) ([]string, error) {
+// attVNIAndIPIndexer is an Index function that computes a string made up by vni
+// and IP of a NetworkAttachment. Used to sync pre-existing interfaces with
+// attachments at start up.
+func attVNIAndIPIndexer(obj interface{}) ([]string, error) {
 	att := obj.(*netv1a1.NetworkAttachment)
-	return []string{generateMACAddr(att.Status.AddressVNI, gonet.ParseIP(att.Status.IPv4)).String()}, nil
+	return []string{attVNIAndIP(att.Status.AddressVNI, att.Status.IPv4)}, nil
+}
+
+func attVNIAndIP(vni uint32, ipv4 string) string {
+	return strconv.FormatUint(uint64(vni), 16) + "/" + ipv4
+}
+
+func localIfcVNIAndIP(ifc *netfabric.LocalNetIfc) string {
+	return ifcVNIAndIP(ifc.VNI, ifc.GuestIP)
+}
+
+func remoteIfcVNIAndIP(ifc *netfabric.RemoteNetIfc) string {
+	return ifcVNIAndIP(ifc.VNI, ifc.GuestIP)
+}
+
+func ifcVNIAndIP(vni uint32, ipv4 gonet.IP) string {
+	return strconv.FormatUint(uint64(vni), 16) + "/" + ipv4.String()
 }
 
 func generateMACAddr(vni uint32, guestIPv4 gonet.IP) gonet.HardwareAddr {

@@ -18,8 +18,6 @@ package networkfabric
 import (
 	"encoding/binary"
 	"fmt"
-	"github.com/golang/glog"
-	"k8s.io/examples/staging/kos/pkg/util"
 	"net"
 	"os/exec"
 	"regexp"
@@ -27,6 +25,10 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/golang/glog"
+
+	"k8s.io/examples/staging/kos/pkg/util"
 )
 
 const (
