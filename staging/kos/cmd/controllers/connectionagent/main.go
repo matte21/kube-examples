@@ -38,7 +38,9 @@ import (
 	kosclientset "k8s.io/examples/staging/kos/pkg/client/clientset/versioned"
 	cactlr "k8s.io/examples/staging/kos/pkg/controllers/connectionagent"
 	_ "k8s.io/examples/staging/kos/pkg/controllers/workqueue_prometheus"
-	netfabric "k8s.io/examples/staging/kos/pkg/networkfabric"
+	netfactory "k8s.io/examples/staging/kos/pkg/networkfabric/factory"
+
+	_ "k8s.io/examples/staging/kos/pkg/networkfabric/ovs"
 )
 
 const (
@@ -98,7 +100,7 @@ func main() {
 		os.Exit(3)
 	}
 
-	netFabric, err := netfabric.NetFabricForName(netFabricName)
+	netFabric, err := netfactory.NewNetFabricForName(netFabricName)
 	if err != nil {
 		glog.Errorf("network fabric not found: %s\n", err.Error())
 		os.Exit(4)
