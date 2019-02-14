@@ -16,9 +16,7 @@ limitations under the License.
 
 package networkfabric
 
-import (
-	"net"
-)
+import "net"
 
 // Interface is the interface of a network fabric which allows
 // the user to implement Netowrk Interfaces. The implementer
@@ -34,6 +32,9 @@ type Interface interface {
 	ListRemoteIfcs() ([]RemoteNetIfc, error)
 }
 
+// LocalNetIfc represents a Local Network Interface. It stores all the data a
+// network fabric needs to instantiate the hard state (e.g. Linux Network
+// Devices, etc...) associated with a Local Network Interface.
 type LocalNetIfc struct {
 	Name     string
 	VNI      uint32
@@ -41,6 +42,9 @@ type LocalNetIfc struct {
 	GuestIP  net.IP
 }
 
+// RemoteNetIfc represents a Remote Network Interface. It stores all the data a
+// network fabric needs to instantiate the hard state (e.g. routing rules,
+// etc...) associated with a Remote Network Interface.
 type RemoteNetIfc struct {
 	VNI      uint32
 	GuestMAC net.HardwareAddr
