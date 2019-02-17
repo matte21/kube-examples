@@ -33,13 +33,13 @@ import (
 	"k8s.io/examples/staging/kos/pkg/apis/network"
 )
 
-// NewStrategy creates and returns a networkattachmentStrategy instance
+// NewStrategy creates and returns a networkattachmentStrategy instance.
 func NewStrategy(typer runtime.ObjectTyper) networkattachmentStrategy {
 	return networkattachmentStrategy{typer, names.SimpleNameGenerator}
 }
 
 // GetAttrs returns labels.Set, fields.Set, the presence of Initializers if any
-// and error in case the given runtime.Object is not a NetworkAttachment
+// and error in case the given runtime.Object is not a NetworkAttachment.
 func GetAttrs(obj runtime.Object) (labels.Set, fields.Set, bool, error) {
 	networkattachment, ok := obj.(*network.NetworkAttachment)
 	if !ok {
@@ -48,8 +48,9 @@ func GetAttrs(obj runtime.Object) (labels.Set, fields.Set, bool, error) {
 	return labels.Set(networkattachment.ObjectMeta.Labels), SelectableFields(networkattachment), networkattachment.Initializers != nil, nil
 }
 
-// MatchNetworkAttachment is the filter used by the generic etcd backend to watch events
-// from etcd to clients of the apiserver only interested in specific labels/fields.
+// MatchNetworkAttachment is the filter used by the generic etcd backend to
+// watch events from etcd to clients of the apiserver only interested in
+// specific labels/fields.
 func MatchNetworkAttachment(label labels.Selector, field fields.Selector) storage.SelectionPredicate {
 	return storage.SelectionPredicate{
 		Label:    label,

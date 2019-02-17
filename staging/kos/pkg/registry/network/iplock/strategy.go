@@ -32,13 +32,13 @@ import (
 	"k8s.io/examples/staging/kos/pkg/apis/network"
 )
 
-// NewStrategy creates and returns a iplockStrategy instance
+// NewStrategy creates and returns a iplockStrategy instance.
 func NewStrategy(typer runtime.ObjectTyper) iplockStrategy {
 	return iplockStrategy{typer, names.SimpleNameGenerator}
 }
 
 // GetAttrs returns labels.Set, fields.Set, the presence of Initializers if any
-// and error in case the given runtime.Object is not a IPLock
+// and error in case the given runtime.Object is not a IPLock.
 func GetAttrs(obj runtime.Object) (labels.Set, fields.Set, bool, error) {
 	iplock, ok := obj.(*network.IPLock)
 	if !ok {
@@ -48,7 +48,8 @@ func GetAttrs(obj runtime.Object) (labels.Set, fields.Set, bool, error) {
 }
 
 // MatchIPLock is the filter used by the generic etcd backend to watch events
-// from etcd to clients of the apiserver only interested in specific labels/fields.
+// from etcd to clients of the apiserver only interested in specific
+// labels/fields.
 func MatchIPLock(label labels.Selector, field fields.Selector) storage.SelectionPredicate {
 	return storage.SelectionPredicate{
 		Label:    label,
