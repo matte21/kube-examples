@@ -83,9 +83,6 @@ This example creates a simple SDN.  It is deliberately simple, so that
 this example can be relatively easy to read and understand.  The SDN
 has just enough complexity to show some interesting issues.  The
 implementation is intended to be efficient and reliable at scale.
-(The current extension server Deployment is just an initial
-development milestone; it will grow to have multiple extension servers
-and multiple etcd servers.)
 
 This SDN is not connected to anything.  It is not used by a CNI
 plugin.  It is not used by any virtual machines.  It is a simple
@@ -139,32 +136,56 @@ The problems that the SDN solves are as follows.
 
 - For a given VNI, the guestIP->hostIP mapping for each of the VNI's
   NetworkAttachments must be communicated to every node that has a
-  NetworkAttachment to that VNI --- and should not be communicated to
+  NetworkAttachment with that VNI --- and should not be communicated to
   other nodes (because that communication would impose unnecessary
   costs).
 
 
 ### The SDN Datapath
 
-On each worker node this SDN creates one OVS "bridge", named `kos`.
+On each worker node this SDN creates one OvS "bridge", named `kos`.
 In addition to the implied port named after the bridge, the SDN
 creates one special OVS port.  It is named `vtep` and, as its name
 suggests, it exchanges encapsulated traffic with its peers on other
 nodes (relying on the IP transport abilities of the nodes).
 
 For each local NetworkAttachment, the SDN creates another OVS port on
-the `kos` bridge.  The name and MAC address of the Linux network
-interface for this port are reported in the NetworkAttachment's
-status.  The SDN does not impose IP layer configuration on this Linux
-network interface (this might not work well, due to the potentially
-overlapping IPs between virtual networks) but rather leaves that up to
-the client.
+the `kos` bridge, and a Linux network interface connected to that port.
+The name and MAC address of such interface are reported in the
+NetworkAttachment's status. The SDN does not impose IP layer configuration
+on this Linux network interface (this might not work well, due to the
+potentially overlapping IPs between virtual networks) but rather leaves
+that up to the client.
 
-For each local NetworkAttachment, the SDN creates two OpenFlow flows
-in the bridge...
+To enable communication between Network interfaces, OpenFlow is used.
+Two OpenFlow tables in each OvS bridge are populated by the SDN at
+runtime: one for identifying the tunnel (VNI) of the packets and one
+for actually forwarding data link traffic and ARP requests to the
+appropriate interfaces. When processing packets, the two tables are
+consulted in pipeline, with the tunneling one being examined first.
 
-For each remote NetworkAttachment, the SDN creates one OpenFlow flow
-in the bridge...
+At bridge `kos` creation time, the SDN installs one "default"
+OpenFlow flow in each table, which handles packets matching no
+other flow. The default flow in the tunneling table forwards
+packets to the other table. The default flow in the datalink traffic
+and ARP table drops packets.
+
+For each local NetworkAttachment, the SDN creates three OpenFlow flows
+in the bridge, one in the tunneling table and two in the datalink and
+ARP table. The flow in the tunneling table sets the tunnel ID of packets
+sent from the NetworkAttachment's interface to the NetworkAttachment's
+VNI, and forwards such packets to the other table. The two other flows
+forward datalink traffic and ARP resolution requests destined to the
+NetworkAttachment to its interface.
+
+For each remote NetworkAttachment, the SDN creates two OpenFlow flows
+in the bridge in the datalink and ARP table. These flows match datalink
+traffic and ARP resolution requests sent to the remote NetworkAttachment.
+Upon matching a packet, they set the tunnel endpoint to the node of the
+remote NetworkAttachment and forward the packet to the `vtep` port. From
+there, OvS will take care of forwarding the packet to the bridge in the
+remote NetworkAttachment node. The flows installed in that bridge will
+make it possible to deliver the packet to the NetworkAttachment's interface.
 
 
 ## The IPAM Controller
@@ -284,12 +305,9 @@ The following approaches were considered, with the last one adopted.
   relevant VNIs is R, 1+R Informers on NetworkAttachments.  For one of
   those Informers, list&watch filter on whether `spec.node` identifies
   the agent's node.  Each of the other Informers is specific to a VNI,
-  and that Informer's list&watch filter on whether `spec.vni` (yes,
-  that's denormalized data) equals the Informer's VNI.
-
-A connection agent can and should be as selective regarding Subnets as
-regarding NetworkAttachments.
-
+  and that Informer's list&watch filter on whether `status.addressVNI`
+  (which is the VNI where the attachment's locked address resides)
+  equals the Informer's VNI.
 
 ## Test Driver
 
@@ -311,7 +329,10 @@ used for the following.
 
 - Enable the connection agent to mount `/var/run/netns` with
   bidirectional mount propagation while using the host network
-  namespace, which are hacks to make the ping testing work.
+  namespace, which are hacks to make the ping testing performed
+  by the test driver work (see
+  [cmd/attachment-tput-driver](cmd/attachment-tput-driver) for more
+  details).
 
 KOS will use two subsets of the cluster, one for the KOS control plane
 and one for KOS workload.  These subsets may be disjoint or overlap,
@@ -355,15 +376,15 @@ the following.
 - https://github.com/kubernetes/kube-openapi/tree/master/cmd/openapi-gen
   , built and on your `$PATH`.
 
-With `kos` as your current working directory, `glide install` to
+With `kos` as your current working directory, `glide install -v` to
 populate the `kos/vendor` directory.
 
 On each worker machine in your Kube cluster you will need the
 following.
 
-- OVS (the `openvswitch-switch` package), release 2.2 or later
+- OVS (the `openvswitch-switch` package), release 2.3 or later
 
-Before deploying KOS, the Kubernetes nodes must havce the labels
+Before deploying KOS, the Kubernetes nodes must have the labels
 discussed above to identify which KOS subset(s) each node belongs to.
 
 ### Prometheus and Grafana
