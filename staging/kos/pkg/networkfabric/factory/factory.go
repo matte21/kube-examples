@@ -32,7 +32,10 @@ import (
 // fabric factories.
 type Interface func() (networkfabric.Interface, error)
 
-var factoryRegistry map[string]Interface
+// factoryRegistry associates netfabric names with the factory functions for
+// those netfabric. Init with a capacity of 1 because we expect that at least
+// one factory will always be registered.
+var factoryRegistry = make(map[string]Interface, 1)
 
 // RegisterFactory registers a network fabric factory under the given name.
 // After a successful invocation, an instance of a network fabric created by the
@@ -41,9 +44,6 @@ var factoryRegistry map[string]Interface
 // be used ONLY in init() functions of network fabric implementers. Invoking
 // registerFabric more than once with the same name panics.
 func RegisterFactory(factory Interface, name string) {
-	if factoryRegistry == nil {
-		factoryRegistry = make(map[string]Interface, 1)
-	}
 	if _, nameAlreadyInUse := factoryRegistry[name]; nameAlreadyInUse {
 		panic(fmt.Sprintf("a factory with name %s is already registered. Use a different name", name))
 	}
