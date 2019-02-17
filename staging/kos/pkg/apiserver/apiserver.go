@@ -35,8 +35,8 @@ import (
 )
 
 var (
-	Scheme               = runtime.NewScheme()
-	Codecs               = serializer.NewCodecFactory(Scheme)
+	Scheme = runtime.NewScheme()
+	Codecs = serializer.NewCodecFactory(Scheme)
 )
 
 func init() {
@@ -57,8 +57,8 @@ func init() {
 	)
 }
 
+// ExtraConfig is where you should place your custom config.
 type ExtraConfig struct {
-	// Place your custom config here.
 	NetworkSharedInformerFactory networkinformers.SharedInformerFactory
 }
 
@@ -67,7 +67,8 @@ type Config struct {
 	ExtraConfig   *ExtraConfig
 }
 
-// NetworkAPIServer contains state for a Kubernetes cluster master/api server.
+// NetworkAPIServer contains state for a Kubernetes cluster API server which
+// serves the network API group.
 type NetworkAPIServer struct {
 	GenericAPIServer *genericapiserver.GenericAPIServer
 }
@@ -109,12 +110,12 @@ func (c completedConfig) New() (*NetworkAPIServer, error) {
 	}
 
 	apiGroupInfo := genericapiserver.NewDefaultAPIGroupInfo(network.GroupName, Scheme, metav1.ParameterCodec, Codecs)
-	
+
 	v1alpha1storage := map[string]rest.Storage{}
 	v1alpha1storage["networkattachments"] = networkregistry.RESTInPeace(networkattachmentstorage.NewREST(Scheme, c.GenericConfig.RESTOptionsGetter))
 	v1alpha1storage["subnets"] = networkregistry.RESTInPeace(subnetstorage.NewREST(Scheme, c.GenericConfig.RESTOptionsGetter, c.ExtraConfig.NetworkSharedInformerFactory))
 	v1alpha1storage["iplocks"] = networkregistry.RESTInPeace(iplockstorage.NewREST(Scheme, c.GenericConfig.RESTOptionsGetter))
-	
+
 	apiGroupInfo.VersionedResourcesStorageMap["v1alpha1"] = v1alpha1storage
 
 	if err := s.GenericAPIServer.InstallAPIGroup(&apiGroupInfo); err != nil {

@@ -57,8 +57,8 @@ func NewNetworkAPIServerOptions(out, errOut io.Writer) *NetworkAPIServerOptions 
 	return o
 }
 
-// NewCommandStartNetworkAPIServer provides a CLI handler for 'start master' command
-// with a default NetworkAPIServerOptions.
+// NewCommandStartNetworkAPIServer provides a CLI handler for 'start master'
+// command with a default NetworkAPIServerOptions.
 func NewCommandStartNetworkAPIServer(defaults *NetworkAPIServerOptions, stopCh <-chan struct{}) *cobra.Command {
 	o := *defaults
 	cmd := &cobra.Command{
@@ -137,11 +137,10 @@ func (o NetworkAPIServerOptions) RunNetworkAPIServer(stopCh <-chan struct{}) err
 		return err
 	}
 
-	server.GenericAPIServer.AddPostStartHook("start-network-apiserver-informers", func(context genericapiserver.PostStartHookContext) error {
-		glog.V(1).Infoln("SharedInformerFactorys about to start")
-		config.GenericConfig.SharedInformerFactory.Start(context.StopCh)
+	server.GenericAPIServer.AddPostStartHook("start-network-apiserver-informer", func(context genericapiserver.PostStartHookContext) error {
+		glog.V(1).Infoln("NetworkSharedInformerFactory about to start")
 		config.ExtraConfig.NetworkSharedInformerFactory.Start(context.StopCh)
-		glog.V(1).Infoln("SharedInformerFactorys started")
+		glog.V(1).Infoln("NetworkSharedInformerFactory started")
 		return nil
 	})
 	glog.V(1).Infoln("start-network-apiserver-informers PostStartHook added")
